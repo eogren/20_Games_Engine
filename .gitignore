@@ -17,5 +17,6 @@ xcuserdata/
 # Credentials
 .netrc
 
-# Claude Code (per-user settings, not shared)
+# Claude Code (per-user settings and local agent scratch, not shared)
 .claude/settings.local.json
+.claude/worktrees/
