@@ -11,6 +11,7 @@ public final class Host: NSObject {
     private let engine: GameEngine
     private var window: NSWindow?
     private var displayLink: CADisplayLink?
+    private var closeObserver: NSObjectProtocol?
     private var lastTimestamp: CFTimeInterval = 0
 
     public init(game: any Game) {
@@ -36,6 +37,21 @@ public final class Host: NSObject {
         window.center()
         window.makeKeyAndOrderFront(nil)
         self.window = window
+
+        // macOS keeps the app alive after the window closes so Dock-icon
+        // re-opens it; wrong for a single-window game. Scoped to *this*
+        // window (object: window) and routed through `terminate(_:)` so any
+        // future delegate's `applicationShouldTerminate` still has a say.
+        // Avoids claiming the app's single delegate slot.
+        self.closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                NSApplication.shared.terminate(nil)
+            }
+        }
 
         // AppKit only honors menu key equivalents when a main menu is
         // installed; without this, Cmd-Q is a no-op.
