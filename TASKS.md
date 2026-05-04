@@ -9,10 +9,25 @@ If a phase doesn't, it's probably over-engineered — collapse it.
 
 ---
 
+## Independent quick wins (do anytime)
+
+Small fixes that don't depend on or block phase 1.
+
+- [ ] **Pass game title into `Host`.** Currently `Host.swift:45` hardcodes
+  `window.title = "Game"`. Add a `title: String` parameter to
+  `Host.init(game:title:)` (default `"Game"` to keep callers compiling),
+  store it, apply in `run()` before `makeKeyAndOrderFront`. FlappyBird's
+  `App.swift` passes `"Flappy Bird"`. iOS branch is empty so no parallel
+  change needed yet.
+
+---
+
 ## Phase 1 — 3D substrate (engine + platform)
 
-Goal: replace the fullscreen quad with a single lit, tilted, depth-tested
-cube spinning in front of the camera. No game logic yet.
+Goal: keep the fullscreen quad as a background and draw a lit, tilted,
+depth-tested cube *on top* of it. Two distinct render paths coexisting in
+one frame is the real test — single-cube would let bugs in PSO/depth/format
+caching hide. No game logic yet.
 
 - [ ] **Depth attachment plumbing.**
   - `Platform/MetalView` allocates a depth texture matching the drawable size,
@@ -71,18 +86,30 @@ cube spinning in front of the camera. No game logic yet.
   - `GameEngine.update` uploads `ViewUniforms` to vertex buffer 1 between
     `beginFrame` and game `update`, so every `drawMesh` call inherits it.
 
-- [ ] **MyGame: spinning lit cube from Blender.**
-  - Author a unit cube in Blender, export `cube.obj` into the FlappyBird app
-    target's resources (Xcode-bundled, ends up in `Bundle.main`).
-  - Replace the fullscreen-quad call with `Mesh.load(named: "cube")` + a
-    `drawMesh(cube, ...)`. Ortho camera tilted 8° on X, looking down -Z.
-    Cube orbits a small circle in the XY plane while spinning on Y — the
-    orbit exercises `translation`, the spin exercises `rotationY`, and the
-    composed model matrix proves the multiply order is right. Catching
-    sign/handedness bugs here is much cheaper than debugging them in phase 2
-    when six things are using transforms at once.
-  - `Shaders.metal` gains a `lit` fragment (Lambertian, hardcoded base color
-    or color uniform).
+- [ ] **MyGame: fullscreen-quad background + spinning lit cube on top.**
+  - Keep the existing `drawFullscreenQuad("background", ...)` call. Add
+    `Mesh.load(named: "cube")` and a `drawMesh(cube, ...)` issued *after*
+    the quad in the same frame. Two PSOs, two draws, one render pass.
+  - Author a unit cube in Blender, export `cube.obj` into the FlappyBird
+    app target's resources (Xcode-bundled, ends up in `Bundle.main`).
+  - Ortho camera tilted 8° on X, looking down -Z. Cube orbits a small
+    circle in the XY plane while spinning on Y — the orbit exercises
+    `translation`, the spin exercises `rotationY`, and the composed model
+    matrix proves the multiply order is right. Catching sign/handedness
+    bugs here is much cheaper than debugging them in phase 2 when six
+    things are using transforms at once.
+  - `Shaders.metal` gains a `lit` fragment (Lambertian, hardcoded base
+    color or color uniform).
+  - **Quad-vs-cube depth interaction.** The fullscreen quad's vertex
+    shader synthesizes NDC positions directly, so its z is whatever it
+    emits. With depth always-on, the cube must win the depth test against
+    the quad. Two clean options: (a) emit `position.z = 1.0` from the
+    fullscreen vertex shader so the quad sits at the far plane, or (b)
+    give the quad PSO a depth state of `compare = .always, write = false`
+    so it ignores depth entirely. Pick (a) if "background sits at far,
+    everything else draws over it" is a useful invariant; pick (b) if
+    you want the quad to be philosophically a 2D overlay decoupled from
+    the 3D world. (a) is probably the right answer.
   - **Blocker note:** this milestone needs a real `.obj` to exist. If you
     don't have one handy when implementing, Blender's default cube
     (File → New → General, then File → Export → Wavefront OBJ) is exactly
