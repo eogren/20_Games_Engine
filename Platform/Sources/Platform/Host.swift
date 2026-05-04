@@ -37,6 +37,10 @@ public final class Host: NSObject {
         window.makeKeyAndOrderFront(nil)
         self.window = window
 
+        // AppKit only honors menu key equivalents when a main menu is
+        // installed; without this, Cmd-Q is a no-op.
+        app.mainMenu = Self.makeMainMenu()
+
         // CADisplayLink fires on the runloop it's added to, so attaching to
         // .main keeps the tick on the main thread (where @MainActor lives).
         let link = window.contentView!.displayLink(target: self, selector: #selector(tick(_:)))
@@ -53,6 +57,27 @@ public final class Host: NSObject {
         lastTimestamp = now
 
         engine.update(dt: dt)
+    }
+
+    /// Builds the macOS main menu. Currently exposes only a Quit item bound
+    /// to Cmd-Q; AppKit dispatches the shortcut to `NSApplication.terminate`.
+    /// Static and pure so tests can assert on the menu without booting AppKit.
+    static func makeMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+
+        let appMenu = NSMenu()
+        let quitItem = NSMenuItem(
+            title: "Quit \(ProcessInfo.processInfo.processName)",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        quitItem.keyEquivalentModifierMask = .command
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+
+        return mainMenu
     }
 }
 #else
