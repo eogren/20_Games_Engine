@@ -27,6 +27,17 @@ jobs:
         working-directory: Platform
         run: swift test
 
+      # Engine is tested twice: `swift test` covers pure-logic tests, but
+      # the SwiftPM CLI doesn't invoke the Metal compiler, so renderer
+      # tests need an Xcode-driven build to compile shaders.
+      - name: Test Engine renderer (xcodebuild)
+        working-directory: Engine
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -scheme Engine \
+            -destination 'platform=macOS'
+
       - name: Build & Test FlappyBird
         working-directory: FlappyBird
         run: |

@@ -17,4 +17,5 @@ public protocol Game: AnyObject {
 @MainActor
 public struct GameContext {
     public let keyboard: Keyboard
+    public let renderer: Renderer
 }

@@ -24,7 +24,9 @@ Cross-Apple input (keyboard via `GameController`, gamepad, GCMouse) lives in Eng
 
 Lower-level *substrate* first; higher-level material/sprite/scene workflow extracted later, on top of the substrate, once 2–3 real games surface the repeated patterns. Don't build the workflow speculatively — verbosity in the first game is the feature, not the bug.
 
-Shader sources (`.metal`) live in the **game/app target's bundle**, not in Engine or Platform. Compiled to `.metallib` at build time, loaded via `device.makeDefaultLibrary()`. Engine references shader functions by name.
+**Shader source ownership.** Game-authored shaders (per-game fragment shaders, custom material logic) live in the **game/app target's bundle**, compiled to `.metallib` at build time and loaded via `device.makeDefaultLibrary(bundle: .main)`. The Engine package may ship its own *substrate* shaders (e.g., the fullscreen vertex shader used by `drawFullscreenQuad`) as `.metal` files under `Sources/Engine/Shaders/`, declared as a `.process(...)` resource in `Package.swift` — these compile into `Engine_Engine.bundle/default.metallib` and load via `device.makeDefaultLibrary(bundle: .module)`. The renderer holds both libraries; PSOs link a vertex function from one with a fragment function from the other.
+
+**Build-system note.** The SwiftPM CLI (`swift build` / `swift test`) does NOT invoke the Metal compiler. Any code path that loads `Bundle.module`'s metallib only works under Xcode-driven builds (the FlappyBird app, or `xcodebuild test` against the Engine package). Renderer tests gate on metallib presence so `swift test` stays green for non-renderer code.
 
 ## Testing isolation
 
@@ -34,15 +36,16 @@ If render code starts leaking into game-logic or math tests, that's the signal t
 
 ## Frame ordering
 
-Per-frame work has a fixed order owned by `GameEngine.update(dt:)`:
-1. Game logic / simulation tick (consumes input edges)
-2. Render
-3. `keyboard.endFrame()` — clear pressed/released edge sets
+Per-frame work has a fixed order owned by `GameEngine.update(dt:drawable:passDescriptor:)`:
+1. `renderer.beginFrame(...)` — opens a render encoder.
+2. Game logic / simulation tick (consumes input edges, issues draws against `ctx.renderer` immediately — encoding is interleaved with simulation, not a separate phase).
+3. `renderer.endFrame()` — closes the encoder, presents (if a drawable was bound), commits the command buffer.
+4. `keyboard.endFrame()` — clears pressed/released edge sets.
 
-Edge sets must be cleared **after** game logic consumed them. The platform host calls `engine.update(dt:)` once per display refresh and nothing more.
+Edge sets must be cleared **after** game logic consumed them. Encoding happens *during* `game.update`, not after — the engine just brackets it. The platform host fetches a drawable + builds a clear-color pass descriptor each tick and calls `engine.update(...)` once per display refresh.
 
 ## Game integration
 
-Games are **a third package** on top of Platform → Engine. A game target implements Engine's `Game` protocol (`update(_ ctx: GameContext, dt: Float)`), constructs an instance, and hands it to `Host(game:)`. The engine ticks the game each frame and passes a `GameContext` — an explicit allowlist of engine services (currently `keyboard`; later `renderer`, `audio`, etc.) that the game may touch this tick. Games should not hold references to `GameEngine` itself.
+Games are **a third package** on top of Platform → Engine. A game target implements Engine's `Game` protocol (`update(_ ctx: GameContext, dt: Float)`), constructs an instance, and hands it to `Host(game:)`. The engine ticks the game each frame and passes a `GameContext` — an explicit allowlist of engine services (currently `keyboard` and `renderer`; later `audio`, etc.) that the game may touch this tick. Games should not hold references to `GameEngine` itself.
 
 Object/system registration (ECS-style) is **not** built in. When 2–3 games show repeated entity/system patterns in their top-level `update`, extract a registration layer on top of `Game` — same "substrate first, workflow later" pattern as rendering.
