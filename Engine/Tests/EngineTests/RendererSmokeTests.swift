@@ -48,8 +48,7 @@ import Testing
         color.clearColor = MTLClearColorMake(0, 0, 0, 1)
 
         renderer.beginFrame(passDescriptor: pass)
-        let buffer = try #require(renderer.endFrame())
-        buffer.waitUntilCompleted()
+        renderer.endFrame().waitUntilCompleted()
 
         let bytesPerRow = width * 4
         var pixels = [UInt8](repeating: 0xFF, count: width * height * 4)

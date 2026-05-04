@@ -70,18 +70,20 @@ public final class Renderer {
     /// callers (tests) can `waitUntilCompleted()` before reading back
     /// pixels. Production callers can ignore the return value.
     @discardableResult
-    func endFrame() -> MTLCommandBuffer? {
-        encoder?.endEncoding()
-        if let drawable = currentDrawable {
-            commandBuffer?.present(drawable)
+    func endFrame() -> MTLCommandBuffer {
+        guard let commandBuffer, let encoder else {
+            fatalError("Renderer.endFrame called without a matching beginFrame")
         }
-        let cb = commandBuffer
-        cb?.commit()
-        encoder = nil
-        commandBuffer = nil
-        currentDrawable = nil
-        currentColorFormat = .invalid
-        return cb
+        encoder.endEncoding()
+        if let drawable = currentDrawable {
+            commandBuffer.present(drawable)
+        }
+        commandBuffer.commit()
+        self.commandBuffer = nil
+        self.encoder = nil
+        self.currentDrawable = nil
+        self.currentColorFormat = .invalid
+        return commandBuffer
     }
 
     /// Issues a single fullscreen draw using the engine's `fullscreen_vertex`
@@ -90,10 +92,9 @@ public final class Renderer {
     /// bound. Uniforms are passed inline via `setFragmentBytes` at buffer
     /// index 0.
     ///
-    /// Caller's `U` must be `BitwiseCopyable` (no class refs, no
-    /// indirection) and its layout must match the fragment shader's
-    /// `constant U& [[buffer(0)]]` parameter. The bitwise-copyable
-    /// constraint is enforced; the layout match is a contract.
+    /// `U`'s memory layout must match the fragment shader's
+    /// `constant U& [[buffer(0)]]` — Swift can't verify the cross-language
+    /// layout, so it's a contract.
     public func drawFullscreenQuad<U: BitwiseCopyable>(fragmentShader: String, uniforms: U) {
         guard let encoder else {
             fatalError("Renderer.drawFullscreenQuad called outside begin/endFrame")

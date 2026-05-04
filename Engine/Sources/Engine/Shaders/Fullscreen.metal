@@ -23,8 +23,8 @@ struct FullscreenVOut {
 };
 
 vertex FullscreenVOut fullscreen_vertex(uint vid [[vertex_id]]) {
-    float2 p = float2((vid & 1) == 0 ? -1.0 : 1.0,
-                      (vid & 2) == 0 ? -1.0 : 1.0);
+    // Bit 0 picks x ∈ {0,1}, bit 1 picks y ∈ {0,1}; remap to NDC ∈ {-1,+1}.
+    float2 p = float2(float(vid & 1), float((vid >> 1) & 1)) * 2.0 - 1.0;
     FullscreenVOut o;
     o.position = float4(p, 0, 1);
     o.uv = p * 0.5 + 0.5;

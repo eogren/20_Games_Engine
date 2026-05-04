@@ -19,7 +19,6 @@ jobs:
           xcodebuild -version
           swift --version
 
-      # Pure-logic tests (math, keyboard) — fast, no Metal needed.
       - name: Test Engine
         working-directory: Engine
         run: swift test
@@ -28,10 +27,9 @@ jobs:
         working-directory: Platform
         run: swift test
 
-      # Renderer tests need the Metal compiler, which only Xcode-driven
-      # builds invoke. From the Engine package directory, xcodebuild
-      # resolves Package.swift and runs the SwiftPM-generated scheme
-      # (which includes RendererSmokeTests).
+      # Engine is tested twice: `swift test` covers pure-logic tests, but
+      # the SwiftPM CLI doesn't invoke the Metal compiler, so renderer
+      # tests need an Xcode-driven build to compile shaders.
       - name: Test Engine renderer (xcodebuild)
         working-directory: Engine
         run: |
@@ -40,8 +38,6 @@ jobs:
             -scheme Engine \
             -destination 'platform=macOS'
 
-      # End-to-end: builds + runs FlappyBirdTests, exercises the full
-      # Engine + Platform + game-shader bundling chain.
       - name: Build & Test FlappyBird
         working-directory: FlappyBird
         run: |
