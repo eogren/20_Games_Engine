@@ -4,6 +4,6 @@ import Platform
 struct FlappyBirdApp {
     @MainActor
     static func main() {
-        Host(game: MyGame()).run()
+        Host(game: MyGame(), title: "Flappy Bird", fpsCap: 60).run()
     }
 }

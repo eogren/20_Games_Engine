@@ -13,41 +13,12 @@ If a phase doesn't, it's probably over-engineered — collapse it.
 
 Small fixes that don't depend on or block phase 1.
 
-- [ ] **Pass game title into `Host`.** Currently `Host.swift:45` hardcodes
-  `window.title = "Game"`. Add a `title: String` parameter to
-  `Host.init(game:title:)` (default `"Game"` to keep callers compiling),
-  store it, apply in `run()` before `makeKeyAndOrderFront`. FlappyBird's
-  `App.swift` passes `"Flappy Bird"`. iOS branch is empty so no parallel
-  change needed yet.
+- [x] **Pass game title into `Host`.** Done — `Host.init(game:title:fpsCap:)`
+  takes a `title: String = "Game"`; FlappyBird passes `"Flappy Bird"`.
 
-- [ ] **Frame-rate cap as a `Host` option.** Currently the display link
-  fires at the display's max refresh — 120Hz on ProMotion. For
-  Flappy-Bird-class games there's no visual benefit over 60 and the
-  doubled per-frame work measurably costs CPU / battery (we measured
-  ~17% CPU at near-120 fps on the trivial substrate). Add an
-  `fpsCap: Int? = nil` parameter to `Host.init(game:title:fpsCap:)`,
-  store it, and in `run()` apply it via
-  `displayLink.preferredFrameRateRange = CAFrameRateRange(minimum: cap,
-  maximum: cap, preferred: cap)` when non-nil. `nil` keeps the current
-  "follow display" behavior so existing callers don't change. FlappyBird
-  passes `60`. Bundle this with the title task — they're both small
-  Host-init plumbing changes touching the same call site. iOS branch
-  empty so no parallel change yet.
-
-- [ ] **Auto-enable Metal validation in Debug builds.** During the Metal 4
-  port we ran the app under `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1`
-  manually to catch binding/residency bugs. Make Debug runs do this by
-  default so we keep validation pressure on without thinking about it.
-  Right path is to commit a *shared* scheme at
-  `FlappyBird/FlappyBird.xcodeproj/xcshareddata/xcschemes/FlappyBird.xcscheme`
-  with the Run action's Diagnostics tab toggling on:
-  - Metal API Validation
-  - Metal Shader Validation
-  (Both already on by default in fresh Xcode schemes, but the *shared*
-  copy is what gets committed — currently FlappyBird's scheme lives under
-  `xcuserdata/` and isn't versioned, so each clone gets a fresh default
-  rather than our agreed-on flags.) Verify Release runs leave them off so
-  we don't ship validation overhead. No engine code changes needed.
+- [x] **Frame-rate cap as a `Host` option.** Done — `Host.init` takes
+  `fpsCap: Int? = nil`, applied via `CAFrameRateRange` on the display link
+  when non-nil. FlappyBird passes `60`.
 
 - [ ] **Renderer regression test that catches viewport-shaped bugs.** The
   current `RendererSmokeTests.clearToBlackFillsTargetWithBlackPixels`
