@@ -21,7 +21,7 @@ public final class GameEngine {
     /// engine brackets `game.update` with the renderer's begin/endFrame
     /// so the game can issue draws against `ctx.renderer` immediately.
     /// `keyboard.endFrame()` runs last so the next tick sees clean edges.
-    public func update(dt: Float, drawable: CAMetalDrawable, passDescriptor: MTLRenderPassDescriptor) {
+    public func update(dt: Float, drawable: CAMetalDrawable, passDescriptor: MTL4RenderPassDescriptor) {
         renderer.beginFrame(passDescriptor: passDescriptor, drawable: drawable)
         let ctx = GameContext(keyboard: keyboard, renderer: renderer)
         game.update(ctx, dt: dt)

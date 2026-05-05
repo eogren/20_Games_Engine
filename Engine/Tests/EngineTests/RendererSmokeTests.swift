@@ -40,7 +40,7 @@ import Testing
         texDesc.storageMode = .shared
         let texture = try #require(device.makeTexture(descriptor: texDesc))
 
-        let pass = MTLRenderPassDescriptor()
+        let pass = MTL4RenderPassDescriptor()
         let color = pass.colorAttachments[0]!
         color.texture = texture
         color.loadAction = .clear
