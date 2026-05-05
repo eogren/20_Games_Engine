@@ -19,8 +19,18 @@ import Testing
     static let engineMetalLibraryAvailable: Bool =
         Bundle.module.url(forResource: "default", withExtension: "metallib") != nil
 
-    @Test(.enabled(if: engineMetalLibraryAvailable,
-                   "engine metallib not in Bundle.module — run via xcodebuild test"))
+    /// True only when the system Metal device exposes `MTLGPUFamilyMetal4`.
+    /// Real Apple Silicon hardware passes; the virtualized GPU on
+    /// GitHub-hosted macOS runners does not — its `_MTLDevice` raises an
+    /// uncatchable NSException from `newMTL4CommandQueue`, so we have to
+    /// preflight with `supportsFamily(.metal4)` and skip the test there.
+    static let metal4Supported: Bool = {
+        guard let device = MTLCreateSystemDefaultDevice() else { return false }
+        return device.supportsFamily(.metal4)
+    }()
+
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs engine metallib in Bundle.module (xcodebuild test) and a Metal-4-capable GPU (real hardware, not a CI VM)"))
     @MainActor func clearToBlackFillsTargetWithBlackPixels() throws {
         let device = try #require(MTLCreateSystemDefaultDevice(),
                                   "no Metal device — Apple Silicon CI runner expected")

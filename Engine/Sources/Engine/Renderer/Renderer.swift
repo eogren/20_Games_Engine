@@ -54,6 +54,18 @@ public final class Renderer {
         self.device = device
         self.gameLibrary = gameLibrary
 
+        // Metal 4 GPU family is required. Apple Silicon hardware (M1+) on
+        // macOS 26 / iOS 26 supports it; virtualized Apple Silicon (e.g.,
+        // GitHub-hosted macOS runners on Apple Virtualization) does *not*
+        // — `device.supportsFamily(.metal4)` returns false there. Without
+        // this preflight, `makeMTL4CommandQueue` raises an Obj-C
+        // NSException that Swift can't catch, so we trap with a clear
+        // message instead. Tests that may run in such environments must
+        // gate on `Renderer.isMetal4Supported(on:)`.
+        guard device.supportsFamily(.metal4) else {
+            fatalError("Renderer: \(device.name) does not support MTLGPUFamilyMetal4. Metal 4 is required on macOS 26 / iOS 26; virtualized GPUs (CI runners) typically lack support.")
+        }
+
         guard let queue = device.makeMTL4CommandQueue() else {
             fatalError("Renderer: device.makeMTL4CommandQueue() returned nil")
         }
@@ -271,6 +283,17 @@ public final class Renderer {
         }
         pipelines[key] = pso
         return pso
+    }
+}
+
+extension Renderer {
+    /// True if `device` exposes `MTLGPUFamilyMetal4`. Real Apple Silicon
+    /// hardware on macOS 26 / iOS 26 returns true; virtualized Apple
+    /// Silicon (Apple Virtualization Framework, used by GitHub-hosted
+    /// macOS runners) returns false. Tests that need a live `Renderer`
+    /// should gate on this so they skip cleanly on CI VMs.
+    public static func isMetal4Supported(on device: MTLDevice) -> Bool {
+        device.supportsFamily(.metal4)
     }
 }
 
