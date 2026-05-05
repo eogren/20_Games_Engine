@@ -60,7 +60,7 @@ public final class Renderer {
         // Preflight with `supportsFamily(.metal4)` so we trap with a
         // clean message.
         guard device.supportsFamily(.metal4) else {
-            fatalError("Renderer: \(device.name) does not support MTLGPUFamilyMetal4. Metal 4 is required on macOS 26 / iOS 26; virtualized GPUs (CI runners) typically lack support.")
+            fatalError("Renderer: \(device.name) does not support MTLGPUFamilyMetal4. Virtualized GPUs (e.g., CI runners) typically lack support.")
         }
 
         guard let queue = device.makeMTL4CommandQueue() else {
