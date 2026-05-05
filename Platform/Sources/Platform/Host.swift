@@ -11,17 +11,21 @@ import QuartzCore
 public final class Host: NSObject {
     private let device: MTLDevice
     private let engine: GameEngine
+    private let title: String
+    private let fpsCap: Int?
     private var window: NSWindow?
     private var metalView: MetalView?
     private var displayLink: CADisplayLink?
     private var closeObserver: NSObjectProtocol?
     private var lastTimestamp: CFTimeInterval = 0
 
-    public init(game: any Game) {
+    public init(game: any Game, title: String = "Game", fpsCap: Int? = nil) {
         guard let device = MTLCreateSystemDefaultDevice() else {
             fatalError("Host: no Metal device available on this system")
         }
         self.device = device
+        self.title = title
+        self.fpsCap = fpsCap
         // Bundle.main is the running app; the game ships its `.metal`
         // files there. A nil library is fine for early-dev games with no
         // shaders yet — Engine tolerates it.
@@ -42,7 +46,7 @@ public final class Host: NSObject {
             backing: .buffered,
             defer: false
         )
-        window.title = "Game"
+        window.title = title
 
         let view = MetalView(device: device)
         window.contentView = view
@@ -74,6 +78,10 @@ public final class Host: NSObject {
         // CADisplayLink fires on the runloop it's added to, so attaching to
         // .main keeps the tick on the main thread (where @MainActor lives).
         let link = view.displayLink(target: self, selector: #selector(tick(_:)))
+        if let cap = fpsCap {
+            let rate = Float(cap)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: rate, maximum: rate, preferred: rate)
+        }
         link.add(to: .main, forMode: .common)
         self.displayLink = link
 
