@@ -49,3 +49,21 @@ Edge sets must be cleared **after** game logic consumed them. Encoding happens *
 Games are **a third package** on top of Platform → Engine. A game target implements Engine's `Game` protocol (`update(_ ctx: GameContext, dt: Float)`), constructs an instance, and hands it to `Host(game:)`. The engine ticks the game each frame and passes a `GameContext` — an explicit allowlist of engine services (currently `keyboard` and `renderer`; later `audio`, etc.) that the game may touch this tick. Games should not hold references to `GameEngine` itself.
 
 Object/system registration (ECS-style) is **not** built in. When 2–3 games show repeated entity/system patterns in their top-level `update`, extract a registration layer on top of `Game` — same "substrate first, workflow later" pattern as rendering.
+
+## Workflow
+
+**Branches and PRs.** Non-trivial changes go on a feature branch in a git worktree and land via a GitHub PR — never direct to `main`. Worktrees keep `main` clean while work is in flight and let multiple branches build in parallel without stomping each other's `DerivedData`. The pattern:
+
+```sh
+git worktree add ../20_Games_Engine_worktrees/<branch> -b <branch> main
+cd ../20_Games_Engine_worktrees/<branch>
+# ... work, commit ...
+git push -u origin <branch>
+gh pr create
+```
+
+Trivial doc edits (a `TASKS.md` checkbox flip, a typo fix) can go direct to `main`. Anything that touches code, the build graph, or the test suite goes through a PR.
+
+**Running tests.** `./test.sh` at repo root runs the Engine package's test suite via `xcodebuild test` (the SwiftPM CLI doesn't invoke the Metal compiler, so renderer pixel-readback tests skip under `swift test` but run under `xcodebuild`). Pass-through args go to xcodebuild — e.g., `./test.sh -only-testing:EngineTests/RendererSmokeTests`.
+
+**Test-only shaders** live in `Engine/Tests/EngineTests/Shaders/` and are wired into the test bundle via `resources: [.process("Shaders")]` on the test target. Tests load them with `device.makeDefaultLibrary(bundle: .module)` (the test bundle) and hand the library to `Renderer(device:gameLibrary:)`.
