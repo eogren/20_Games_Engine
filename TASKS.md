@@ -35,6 +35,22 @@ Small fixes that don't depend on or block phase 1.
   rather than our agreed-on flags.) Verify Release runs leave them off so
   we don't ship validation overhead. No engine code changes needed.
 
+- [ ] **Renderer regression test that catches viewport-shaped bugs.** The
+  current `RendererSmokeTests.clearToBlackFillsTargetWithBlackPixels`
+  only exercises the clear path; it didn't catch the missing
+  `setViewport` in `beginFrame` because that bug only manifests when a
+  draw runs (clears go through `loadAction` and bypass the rasterizer).
+  Add an offscreen draw-and-readback test: render `drawFullscreenQuad`
+  with a fragment that emits, e.g., `float4(uv.x, uv.y, 0, 1)`, read
+  back the texture, and assert that the four corner pixels differ from
+  the clear color in the expected directions (top-right ≠ bottom-left,
+  etc.). Blocker: the test needs a `.metal` fragment shader to load as
+  the "game library" — easiest path is shipping a tiny test-only
+  `.metal` in `Engine/Tests/EngineTests/Shaders/` and wiring it through
+  Package.swift's test-target resources. Natural to slot in alongside
+  phase 1's standard mesh shader since both need a "tests have a real
+  fragment shader available" pattern.
+
 ---
 
 ## Phase 1 — 3D substrate (engine + platform)
