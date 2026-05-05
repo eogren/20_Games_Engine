@@ -12,9 +12,7 @@
 
 set -euo pipefail
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-
-cd "$repo_root/Engine"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 exec xcodebuild test \
     -scheme Engine \
     -destination 'platform=macOS' \

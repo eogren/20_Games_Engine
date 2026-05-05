@@ -64,6 +64,6 @@ gh pr create
 
 Trivial doc edits (a `TASKS.md` checkbox flip, a typo fix) can go direct to `main`. Anything that touches code, the build graph, or the test suite goes through a PR.
 
-**Running tests.** `./test.sh` at repo root runs the Engine package's test suite via `xcodebuild test` (the SwiftPM CLI doesn't invoke the Metal compiler, so renderer pixel-readback tests skip under `swift test` but run under `xcodebuild`). Pass-through args go to xcodebuild — e.g., `./test.sh -only-testing:EngineTests/RendererSmokeTests`.
+**Running tests.** Each package owns its own `test.sh` — `Engine/test.sh` today runs the Engine suite via `xcodebuild test` (the SwiftPM CLI doesn't invoke the Metal compiler, so renderer pixel-readback tests skip under `swift test` but run under `xcodebuild`). Pass-through args go to xcodebuild — e.g., `Engine/test.sh -only-testing:EngineTests/RendererSmokeTests`. When other packages grow tests, give them their own `test.sh` under that package's directory; a top-level wrapper would imply "all packages" and is misleading until that's actually what it does.
 
 **Test-only shaders** live in `Engine/Tests/EngineTests/Shaders/` and are wired into the test bundle via `resources: [.process("Shaders")]` on the test target. Tests load them with `device.makeDefaultLibrary(bundle: .module)` (the test bundle) and hand the library to `Renderer(device:gameLibrary:)`.
