@@ -27,7 +27,10 @@ let package = Package(
         ),
         .testTarget(
             name: "EngineTests",
-            dependencies: ["Engine"]
+            dependencies: ["Engine"],
+            resources: [
+                .process("Shaders"),
+            ]
         ),
     ],
     swiftLanguageModes: [.v6]

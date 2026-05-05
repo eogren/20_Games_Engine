@@ -29,14 +29,10 @@ jobs:
 
       # Engine is tested twice: `swift test` covers pure-logic tests, but
       # the SwiftPM CLI doesn't invoke the Metal compiler, so renderer
-      # tests need an Xcode-driven build to compile shaders.
+      # tests need an Xcode-driven build to compile shaders. test.sh is
+      # the canonical entry point so CI and local stay in sync.
       - name: Test Engine renderer (xcodebuild)
-        working-directory: Engine
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -scheme Engine \
-            -destination 'platform=macOS'
+        run: ./Engine/test.sh
 
       # Build-only on CI: the GHA macos-26 runner is a virtualized GPU
       # without Metal 4 support, so launching the FlappyBird app (what

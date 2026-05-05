@@ -6,7 +6,9 @@ import Testing
 /// `MTLTexture` (no window, no drawable), commit, wait, read back bytes,
 /// assert. Lives here rather than in a screen-capture / window-driven
 /// test because the offscreen path is deterministic, headless, and runs
-/// on CI without a display server.
+/// on CI without a display server. Texture / pass / readback boilerplate
+/// is in `PixelTestSupport.swift` so each test reads as the rendering
+/// behavior it's pinning down.
 ///
 /// Requires the engine `.metallib` to be available in `Bundle.module`,
 /// which means these tests must run via `xcodebuild test` (the SwiftPM
@@ -34,47 +36,92 @@ import Testing
                                   "no Metal device — Apple Silicon CI runner expected")
         let renderer = Renderer(device: device, gameLibrary: nil)
 
-        let width = 64
-        let height = 64
-        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm,
-            width: width,
-            height: height,
-            mipmapped: false
-        )
-        texDesc.usage = [.renderTarget, .shaderRead]
-        // .shared is fine on Apple Silicon (unified memory) and lets us
-        // call getBytes without a synchronize blit.
-        texDesc.storageMode = .shared
-        let texture = try #require(device.makeTexture(descriptor: texDesc))
+        let target = try OffscreenColorTarget(device: device, width: 64, height: 64)
 
-        let pass = MTL4RenderPassDescriptor()
-        let color = pass.colorAttachments[0]!
-        color.texture = texture
-        color.loadAction = .clear
-        color.storeAction = .store
-        color.clearColor = MTLClearColorMake(0, 0, 0, 1)
-
-        renderer.beginFrame(passDescriptor: pass)
+        renderer.beginFrame(passDescriptor: target.clearPass(MTLClearColorMake(0, 0, 0, 1)))
         renderer.endFrame().waitUntilCompleted()
 
-        let bytesPerRow = width * 4
-        var pixels = [UInt8](repeating: 0xFF, count: width * height * 4)
-        let region = MTLRegion(
-            origin: MTLOrigin(x: 0, y: 0, z: 0),
-            size: MTLSize(width: width, height: height, depth: 1)
-        )
-        texture.getBytes(&pixels, bytesPerRow: bytesPerRow, from: region, mipmapLevel: 0)
-
-        // .bgra8Unorm with clearColor (R=0,G=0,B=0,A=1) → bytes (0,0,0,255).
-        for y in 0..<height {
-            for x in 0..<width {
-                let off = (y * width + x) * 4
-                #expect(pixels[off] == 0,     "B at (\(x),\(y))")
-                #expect(pixels[off + 1] == 0, "G at (\(x),\(y))")
-                #expect(pixels[off + 2] == 0, "R at (\(x),\(y))")
-                #expect(pixels[off + 3] == 255, "A at (\(x),\(y))")
+        let pixels = target.readback()
+        for y in 0..<target.height {
+            for x in 0..<target.width {
+                #expect(pixels[x, y] == .opaqueBlack, "pixel at (\(x),\(y))")
             }
         }
+    }
+
+    /// Catches viewport / rasterizer-shaped bugs that the clear-only test
+    /// can't see. A missing `setViewport` in `beginFrame` doesn't affect
+    /// `loadAction = .clear` (clears bypass the rasterizer), but it does
+    /// stop draws from landing on the target — exactly the regression
+    /// that motivated this test. We render a fullscreen quad whose
+    /// fragment emits the interpolated uv into red/green and assert the
+    /// four corners disagree from each other in the expected directions:
+    /// red increases left→right, green increases bottom→top. Any failure
+    /// mode (no rasterization, wrong viewport, transposed axes, uniform
+    /// color) breaks at least one of those inequalities.
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs test metallib + engine metallib in their bundles (xcodebuild test) and a Metal-4-capable GPU"))
+    @MainActor func fullscreenDrawCoversTargetWithUVGradient() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(),
+                                  "no Metal device — Apple Silicon hardware expected")
+
+        // The test fragment lives in the test bundle's metallib. Loaded
+        // and handed to the Renderer as the "game" library.
+        let testLibrary = try #require(
+            try? device.makeDefaultLibrary(bundle: .module),
+            "couldn't load test metallib from Bundle.module — run via xcodebuild test"
+        )
+        let renderer = Renderer(device: device, gameLibrary: testLibrary)
+
+        let target = try OffscreenColorTarget(device: device, width: 64, height: 64)
+        // Magenta clear, distinguishable from anything the gradient emits.
+        // If a corner reads back as clear-color the draw didn't cover it.
+        let clearPass = target.clearPass(MTLClearColorMake(1, 0, 1, 1))
+
+        struct UVGradientUniforms { var dummy: Float = 0 }
+
+        renderer.beginFrame(passDescriptor: clearPass)
+        renderer.drawFullscreenQuad(fragmentShader: "uv_gradient",
+                                    uniforms: UVGradientUniforms())
+        renderer.endFrame().waitUntilCompleted()
+
+        let pixels = target.readback()
+        // Sample one pixel in from each corner to dodge edge-rasterization
+        // anomalies. Framebuffer row 0 is the top of the screen; the
+        // fullscreen vertex shader emits uv=clip*0.5+0.5 with clip.y=+1
+        // at top, so top-of-framebuffer corresponds to uv.y≈1 (green high).
+        let topLeft     = pixels[1,                  1]
+        let topRight    = pixels[target.width - 2,   1]
+        let bottomLeft  = pixels[1,                  target.height - 2]
+        let bottomRight = pixels[target.width - 2,   target.height - 2]
+
+        // Sanity: the draw covered every corner (no clear-color leakage,
+        // blue stays 0 from the shader, alpha stays 255).
+        for (name, p) in [("top-left", topLeft), ("top-right", topRight),
+                          ("bottom-left", bottomLeft), ("bottom-right", bottomRight)] {
+            #expect(p.b == 0, "blue at \(name) (clear color leaked through?)")
+            #expect(p.a == 255, "alpha at \(name)")
+        }
+
+        // Red increases left→right.
+        #expect(topLeft.r < 32,      "top-left red should be near 0, got \(topLeft.r)")
+        #expect(topRight.r > 223,    "top-right red should be near 255, got \(topRight.r)")
+        #expect(bottomLeft.r < 32,   "bottom-left red should be near 0, got \(bottomLeft.r)")
+        #expect(bottomRight.r > 223, "bottom-right red should be near 255, got \(bottomRight.r)")
+
+        // Green increases bottom→top.
+        #expect(topLeft.g > 223,    "top-left green should be near 255, got \(topLeft.g)")
+        #expect(topRight.g > 223,   "top-right green should be near 255, got \(topRight.g)")
+        #expect(bottomLeft.g < 32,  "bottom-left green should be near 0, got \(bottomLeft.g)")
+        #expect(bottomRight.g < 32, "bottom-right green should be near 0, got \(bottomRight.g)")
+
+        // The cross-pair inequality TASKS.md called out — top-right and
+        // bottom-left should be maximally different (one is yellow, the
+        // other is black). A bug that emits a uniform color anywhere
+        // (e.g., shader ran but uv interpolation broke) trips this.
+        #expect(topRight.r > bottomLeft.r + 192,
+                "top-right.r (\(topRight.r)) should dominate bottom-left.r (\(bottomLeft.r))")
+        #expect(topRight.g > bottomLeft.g + 192,
+                "top-right.g (\(topRight.g)) should dominate bottom-left.g (\(bottomLeft.g))")
     }
 }
