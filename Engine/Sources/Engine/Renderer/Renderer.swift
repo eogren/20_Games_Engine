@@ -166,7 +166,18 @@ public final class Renderer {
         currentDrawable = drawable
         // PSOs are tied to the color attachment's pixel format. Cache by
         // it so the same fragment shader gets distinct PSOs across formats.
-        currentColorFormat = passDescriptor.colorAttachments[0].texture?.pixelFormat ?? .invalid
+        let target = passDescriptor.colorAttachments[0].texture
+        currentColorFormat = target?.pixelFormat ?? .invalid
+        // Metal 4 doesn't auto-infer a viewport from the color attachment
+        // the way classic Metal did; without this call the rasterizer
+        // produces fragments but they don't land on the target texture.
+        if let target {
+            enc.setViewport(MTLViewport(
+                originX: 0, originY: 0,
+                width: Double(target.width), height: Double(target.height),
+                znear: 0, zfar: 1
+            ))
+        }
         uploadOffset = 0
     }
 
