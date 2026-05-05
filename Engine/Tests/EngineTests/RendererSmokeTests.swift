@@ -19,11 +19,9 @@ import Testing
     static let engineMetalLibraryAvailable: Bool =
         Bundle.module.url(forResource: "default", withExtension: "metallib") != nil
 
-    /// True only when the system Metal device exposes `MTLGPUFamilyMetal4`.
-    /// Real Apple Silicon hardware passes; the virtualized GPU on
-    /// GitHub-hosted macOS runners does not — its `_MTLDevice` raises an
-    /// uncatchable NSException from `newMTL4CommandQueue`, so we have to
-    /// preflight with `supportsFamily(.metal4)` and skip the test there.
+    /// True iff the system device supports Metal 4. Real Apple Silicon
+    /// hardware passes; virtualized GPUs (CI VMs) don't. See `Renderer.init`
+    /// for why we preflight instead of trusting the documented nil.
     static let metal4Supported: Bool = {
         guard let device = MTLCreateSystemDefaultDevice() else { return false }
         return device.supportsFamily(.metal4)
