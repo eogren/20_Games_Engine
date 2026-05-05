@@ -94,7 +94,7 @@ public final class Host: NSObject {
             return
         }
 
-        let pass = MTLRenderPassDescriptor()
+        let pass = MTL4RenderPassDescriptor()
         let color = pass.colorAttachments[0]!
         color.texture = drawable.texture
         color.loadAction = .clear

@@ -38,11 +38,17 @@ jobs:
             -scheme Engine \
             -destination 'platform=macOS'
 
-      - name: Build & Test FlappyBird
+      # Build-only on CI: the GHA macos-26 runner is a virtualized GPU
+      # without Metal 4 support, so launching the FlappyBird app (what
+      # `xcodebuild test` does to host the test bundle) trips the
+      # Renderer's Metal 4 preflight and aborts. FlappyBirdTests is
+      # empty today, so we lose no test coverage; revisit if real
+      # FlappyBird-side tests appear AND CI moves to real hardware.
+      - name: Build FlappyBird
         working-directory: FlappyBird
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild build \
             -project FlappyBird.xcodeproj \
             -scheme FlappyBird \
             -configuration Debug \

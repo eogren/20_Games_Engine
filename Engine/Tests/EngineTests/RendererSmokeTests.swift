@@ -19,8 +19,16 @@ import Testing
     static let engineMetalLibraryAvailable: Bool =
         Bundle.module.url(forResource: "default", withExtension: "metallib") != nil
 
-    @Test(.enabled(if: engineMetalLibraryAvailable,
-                   "engine metallib not in Bundle.module — run via xcodebuild test"))
+    /// True iff the system device supports Metal 4. Real Apple Silicon
+    /// hardware passes; virtualized GPUs (CI VMs) don't. See `Renderer.init`
+    /// for why we preflight instead of trusting the documented nil.
+    static let metal4Supported: Bool = {
+        guard let device = MTLCreateSystemDefaultDevice() else { return false }
+        return device.supportsFamily(.metal4)
+    }()
+
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs engine metallib in Bundle.module (xcodebuild test) and a Metal-4-capable GPU (real hardware, not a CI VM)"))
     @MainActor func clearToBlackFillsTargetWithBlackPixels() throws {
         let device = try #require(MTLCreateSystemDefaultDevice(),
                                   "no Metal device — Apple Silicon CI runner expected")
@@ -40,7 +48,7 @@ import Testing
         texDesc.storageMode = .shared
         let texture = try #require(device.makeTexture(descriptor: texDesc))
 
-        let pass = MTLRenderPassDescriptor()
+        let pass = MTL4RenderPassDescriptor()
         let color = pass.colorAttachments[0]!
         color.texture = texture
         color.loadAction = .clear
