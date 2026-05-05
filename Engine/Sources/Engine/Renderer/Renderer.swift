@@ -207,11 +207,15 @@ public final class Renderer {
 
         queue.commit([commandBuffer], options: opts)
 
-        // Schedule the drawable to present after the queue's prior commits
-        // complete. In Metal 4 this is the queue's job, not the command
-        // buffer's — `commandBuffer.present(_:)` doesn't exist anymore.
+        // Metal 4 splits what classic `MTLCommandBuffer.presentDrawable(_:)`
+        // did in one call: `signalDrawable` tells the queue "rendering
+        // targeting this drawable is complete," and only then is it legal
+        // to call `drawable.present()` to actually schedule presentation.
+        // Skipping the present() call leaves the drawable rendered-to but
+        // never displayed — symptom is a blank window.
         if let drawable = currentDrawable {
             queue.signalDrawable(drawable)
+            drawable.present()
         }
 
         self.encoder = nil
