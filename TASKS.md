@@ -20,6 +20,21 @@ Small fixes that don't depend on or block phase 1.
   `App.swift` passes `"Flappy Bird"`. iOS branch is empty so no parallel
   change needed yet.
 
+- [ ] **Auto-enable Metal validation in Debug builds.** During the Metal 4
+  port we ran the app under `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1`
+  manually to catch binding/residency bugs. Make Debug runs do this by
+  default so we keep validation pressure on without thinking about it.
+  Right path is to commit a *shared* scheme at
+  `FlappyBird/FlappyBird.xcodeproj/xcshareddata/xcschemes/FlappyBird.xcscheme`
+  with the Run action's Diagnostics tab toggling on:
+  - Metal API Validation
+  - Metal Shader Validation
+  (Both already on by default in fresh Xcode schemes, but the *shared*
+  copy is what gets committed — currently FlappyBird's scheme lives under
+  `xcuserdata/` and isn't versioned, so each clone gets a fresh default
+  rather than our agreed-on flags.) Verify Release runs leave them off so
+  we don't ship validation overhead. No engine code changes needed.
+
 ---
 
 ## Phase 1 — 3D substrate (engine + platform)
