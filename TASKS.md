@@ -41,6 +41,15 @@ Small fixes that don't depend on or block phase 1.
   `.process("Shaders")` on the test target — establishes the pattern
   phase 1's standard mesh shader can reuse. (PR #7)
 
+- [x] **`Game.load(_:)` async lifecycle + `meshLoader` on `GameContext`.** Done —
+  `Game` gained `func load(_ ctx: GameContext) async throws` (default empty
+  via protocol extension); `GameContext` gained `meshLoader: MeshLoader`,
+  constructed once by `GameEngine` with the phase-1 vertex descriptor.
+  `Host.run()` defers the `CADisplayLink` until `engine.load()` resolves so
+  games see fully-populated assets in frame 0. Surfaced because the original
+  plan assumed sync loading inside `update`, which doesn't fit `MeshLoader`'s
+  async shape — needed a separate one-shot phase.
+
 ---
 
 ## Phase 1 — 3D substrate (engine + platform)
@@ -76,22 +85,18 @@ caching hide. No game logic yet.
   - Orthographic projection helper deferred to Phase 3 — first user is
     HUD/text rendering. YAGNI until then.
 
-- [ ] **Mesh type + loader (ModelIO/MetalKit-backed).**
-  - `Mesh` wraps `MTKMesh` (which already owns vertex/index buffers + submesh
-    metadata). Engine doesn't author geometry — Blender does.
-  - Canonical vertex layout v1: `position: float3`, `normal: float3`,
-    `texcoord: float2`. Define once as an `MDLVertexDescriptor`; ModelIO
-    repacks any loaded asset to match, so the standard shader's vertex input
-    is fixed regardless of how the artist exported.
-  - `Mesh.load(named:in:device:)` — looks up `<name>.obj` in the given bundle
-    (defaults to `.main`, i.e. the game's bundle), loads via `MDLAsset` with
-    the canonical descriptor + `MTKMeshBufferAllocator`, returns the first
-    `MTKMesh`. Trap with a clear message if the file is missing or has no
-    meshes.
-  - Format: **OBJ** for v1 (native Blender export, ASCII debuggable, no
-    texture dependency). Revisit USDZ in phase 3 when textures land.
-  - No asset cache yet — game holds `Mesh` instances as fields. Add a cache
-    when hot-reload or streaming forces it.
+- [x] **Mesh type + loader (ModelIO/MetalKit-backed).** Done — `MeshLoader`
+  (Engine/Renderer/MeshLoader.swift) wraps `MTKMesh` loading via `MDLAsset` +
+  `MTKMeshBufferAllocator`, async-detached so a chunky parse can't hitch the
+  render loop. Game-facing access is `ctx.meshLoader.loadMesh(from: URL)`.
+  Shape diverged from the plan in two ways worth knowing: (1) instance class
+  configured at construction with an `MDLVertexDescriptor`, not a static
+  `Mesh.load(named:in:device:)` — keeps the layout decision out of every
+  call site; (2) phase-1 layout is `position + texcoord` (stride 20), not
+  `position + normal + texcoord` — normals roll in with the standard mesh
+  shader since they're useless without lighting. OBJ-only for v1; missing
+  attributes throw `MeshError.missingAttributes` instead of zero-filling.
+  (PR #8)
 
 - [ ] **Standard mesh shader (engine substrate).**
   - `Sources/Engine/Shaders/StandardMesh.metal` adds `standard_mesh_vertex`
@@ -150,8 +155,10 @@ caching hide. No game logic yet.
   - Keep the existing `drawFullscreenQuad("background", ...)` call. Add
     `Mesh.load(named: "cube")` and a `drawMesh(cube, ...)` issued *after*
     the quad in the same frame. Two PSOs, two draws, one render pass.
-  - Author a unit cube in Blender, export `cube.obj` into the FlappyBird
-    app target's resources (Xcode-bundled, ends up in `Bundle.main`).
+  - ~~Author a unit cube in Blender, export `cube.obj` into the FlappyBird
+    app target's resources (Xcode-bundled, ends up in `Bundle.main`).~~ Done
+    on the `cube` branch — `FlappyBird/FlappyBird/Resources/cube.obj` is in
+    the synchronized resource folder; `MyGame.load(_:)` already loads it.
   - Perspective camera at `eye=(0, 1, 5)`, `target=(0, 0, -10)`,
     `up=(0, 1, 0)` — same pose Phase 2 will use. Cube placed around
     `z=-3` orbits a small circle in the XY plane while spinning on Y —
@@ -183,8 +190,9 @@ caching hide. No game logic yet.
 - Push constants (`setVertexBytes`) vs. a per-draw uniform buffer ring? Inline
   bytes are fine for ≤4KB and we're well under; revisit if draw count gets
   high enough that command-encoder overhead matters.
-- Where does `Mesh` live in the package — `Engine/Renderer/Mesh.swift`?
-  Probably yes; it's render substrate, not game state.
+- ~~Where does `Mesh` live in the package — `Engine/Renderer/Mesh.swift`?
+  Probably yes; it's render substrate, not game state.~~ Resolved —
+  `Engine/Sources/Engine/Renderer/MeshLoader.swift`.
 
 ---
 
