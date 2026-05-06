@@ -119,6 +119,81 @@ import simd
         #expect(t.translation == [1, 2, 3])
         #expect(t.scale == [0.5, 2, 0.5])
     }
+
+    @Test func identityMatrixIsIdentity4x4() {
+        // Origin maps to origin, every basis vector unchanged.
+        let m = Transform.identity.matrix
+        #expect(approx(applyMatrix(m, to: [0, 0, 0]), [0, 0, 0]))
+        #expect(approx(applyMatrix(m, to: [1, 0, 0]), [1, 0, 0]))
+        #expect(approx(applyMatrix(m, to: [0, 1, 0]), [0, 1, 0]))
+        #expect(approx(applyMatrix(m, to: [0, 0, 1]), [0, 0, 1]))
+    }
+
+    @Test func translationOnlyMovesOrigin() {
+        let t = Transform(translation: [5, -2, 3])
+        #expect(approx(applyMatrix(t.matrix, to: [0, 0, 0]), [5, -2, 3]))
+        #expect(approx(applyMatrix(t.matrix, to: [1, 1, 1]), [6, -1, 4]))
+    }
+
+    @Test func rotationOnlyRotatesAroundOrigin() {
+        // aroundY(π/2) takes +X to -Z (validated in QuaternionExtensionTests).
+        let t = Transform(rotation: .aroundY(.pi / 2))
+        #expect(approx(applyMatrix(t.matrix, to: [1, 0, 0]), [0, 0, -1]))
+        #expect(approx(applyMatrix(t.matrix, to: [0, 1, 0]), [0, 1, 0]))
+    }
+
+    @Test func scaleOnlyScalesAroundOrigin() {
+        let t = Transform(scale: [2, 1, 0.5])
+        #expect(approx(applyMatrix(t.matrix, to: [1, 1, 1]), [2, 1, 0.5]))
+        #expect(approx(applyMatrix(t.matrix, to: [0, 0, 0]), [0, 0, 0]))
+    }
+
+    @Test func combinedTRSAppliesInScaleRotateTranslateOrder() {
+        // Object-space (1, 0, 0):
+        //   scale [2, 1, 1] → (2, 0, 0)
+        //   rotate aroundY(π/2) → (0, 0, -2)
+        //   translate [10, 0, 0] → (10, 0, -2)
+        let t = Transform(
+            translation: [10, 0, 0],
+            rotation: .aroundY(.pi / 2),
+            scale: [2, 1, 1]
+        )
+        #expect(approx(applyMatrix(t.matrix, to: [1, 0, 0]), [10, 0, -2]))
+    }
+
+    @Test func writingTranslationRebuildsMatrix() {
+        var t = Transform.identity
+        t.translation = [3, 4, 5]
+        // Matrix should immediately reflect the new translation.
+        #expect(approx(applyMatrix(t.matrix, to: [0, 0, 0]), [3, 4, 5]))
+    }
+
+    @Test func writingRotationRebuildsMatrix() {
+        var t = Transform.identity
+        t.rotation = .aroundZ(.pi / 2)
+        // aroundZ(π/2) takes +X to +Y.
+        #expect(approx(applyMatrix(t.matrix, to: [1, 0, 0]), [0, 1, 0]))
+    }
+
+    @Test func writingScaleRebuildsMatrix() {
+        var t = Transform.identity
+        t.scale = [3, 3, 3]
+        #expect(approx(applyMatrix(t.matrix, to: [1, 1, 1]), [3, 3, 3]))
+    }
+
+    @Test func lookAtUpdatesMatrix() {
+        var t = Transform(translation: [0, 0, 0])
+        t.lookAt([10, 0, 0])
+        // After lookAt, object-local forward (-Z) should map to +X
+        // direction in world space (translation is origin, so the
+        // matrix's rotation portion alone determines the result).
+        #expect(approx(applyMatrix(t.matrix, to: [0, 0, -1]), [1, 0, 0]))
+    }
+}
+
+private func applyMatrix(_ m: simd_float4x4, to p: Vec3) -> Vec3 {
+    let r = m * SIMD4<Float>(p.x, p.y, p.z, 1)
+    return Vec3(r.x, r.y, r.z)
 }
 
 private let tolerance: Float = 1e-5
