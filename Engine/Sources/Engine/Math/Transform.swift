@@ -30,4 +30,15 @@ public struct Transform: Sendable {
     }
 
     public static let identity = Transform()
+
+    /// Aim the object's forward (`-Z` in object space) at `target`,
+    /// rotating in place around `translation`. `worldUp` stabilizes
+    /// roll; defaults to `+Y`. Translation and scale are untouched.
+    ///
+    /// `target` must not equal `translation`, and the resulting forward
+    /// must not be parallel to `worldUp` — see `simd_quatf.lookRotation`
+    /// for the parallel-axis caveat.
+    public mutating func lookAt(_ target: Vec3, worldUp: Vec3 = [0, 1, 0]) {
+        rotation = .lookRotation(forward: target - translation, up: worldUp)
+    }
 }

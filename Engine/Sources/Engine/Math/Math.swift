@@ -25,4 +25,20 @@ extension simd_quatf {
     public static func aroundZ(_ angle: Float) -> simd_quatf {
         simd_quatf(angle: angle, axis: [0, 0, 1])
     }
+
+    /// Rotation that aims the canonical object-local forward (`-Z`, the
+    /// right-handed Apple/OpenGL convention) along the given world-space
+    /// `forward` direction, with `up` as the roll reference. Built from
+    /// the orthonormal basis `[right, up, -forward]`.
+    ///
+    /// `forward` and `up` must be non-zero and not parallel — when they
+    /// are, the cross product collapses to zero and normalization
+    /// produces NaN. The common gotcha is looking straight up or straight
+    /// down with the default `+Y` up reference.
+    public static func lookRotation(forward: Vec3, up: Vec3 = [0, 1, 0]) -> simd_quatf {
+        let f = normalize(forward)
+        let r = normalize(cross(f, up))
+        let u = cross(r, f)
+        return simd_quatf(simd_float3x3(columns: (r, u, -f)))
+    }
 }
