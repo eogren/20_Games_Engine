@@ -31,11 +31,17 @@ extension simd_quatf {
     /// `forward` direction, with `up` as the roll reference. Built from
     /// the orthonormal basis `[right, up, -forward]`.
     ///
-    /// `forward` and `up` must be non-zero and not parallel — when they
-    /// are, the cross product collapses to zero and normalization
-    /// produces NaN. The common gotcha is looking straight up or straight
-    /// down with the default `+Y` up reference.
+    /// Traps if `forward` is the zero vector or parallel/anti-parallel
+    /// to `up` — both cases collapse the basis cross product to zero and
+    /// would otherwise produce a NaN quaternion. The common gotcha is
+    /// looking straight up or straight down with the default `+Y` up
+    /// reference; pass a different `up` (e.g. `[0, 0, -1]`) when forward
+    /// is near-vertical.
     public static func lookRotation(forward: Vec3, up: Vec3 = [0, 1, 0]) -> simd_quatf {
+        precondition(length_squared(forward) > 1e-12,
+            "simd_quatf.lookRotation: forward must be non-zero (got \(forward))")
+        precondition(length_squared(cross(forward, up)) > 1e-12,
+            "simd_quatf.lookRotation: forward must not be parallel to up (forward=\(forward), up=\(up))")
         let f = normalize(forward)
         let r = normalize(cross(f, up))
         let u = cross(r, f)
