@@ -1,0 +1,14 @@
+# Single-mesh fixture for MeshLoaderTests: a unit quad in the XY plane,
+# with positions and UVs. No normals — phase-1 loader cares about
+# position + UV only.
+o quad
+v -1 -1 0
+v  1 -1 0
+v  1  1 0
+v -1  1 0
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+f 1/1 2/2 3/3
+f 1/1 3/3 4/4

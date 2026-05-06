@@ -30,6 +30,7 @@ let package = Package(
             dependencies: ["Engine"],
             resources: [
                 .process("Shaders"),
+                .copy("Meshes"),
             ]
         ),
     ],
