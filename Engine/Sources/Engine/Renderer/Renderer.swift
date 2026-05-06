@@ -1,4 +1,6 @@
 import Metal
+import MetalKit
+@preconcurrency import ModelIO
 import QuartzCore
 
 /// Issues GPU work for a single frame using Metal 4. Owns the command
@@ -33,7 +35,13 @@ public final class Renderer {
     private let engineLibrary: MTLLibrary
     private let gameLibrary: MTLLibrary?
     private var pipelines: [PipelineKey: MTLRenderPipelineState] = [:]
-
+    /// Identity set of MTLBuffers already added to `residencySet`, so
+    /// `register(_:)` can dedup. Keyed by `ObjectIdentifier` because
+    /// `MTKMeshBufferAllocator` frequently packs a mesh's vertex and
+    /// index data into the same underlying MTLBuffer (distinguished by
+    /// offset), and we only want one `addAllocation` call per instance.
+    private var knownAllocations: Set<ObjectIdentifier> = []
+    
     /// Per-frame upload buffer capacity. 64 KB is overkill for a fullscreen
     /// quad's uniforms but cheap, and gives headroom for the mesh path
     /// (per-draw model matrices etc.) coming next.
@@ -43,6 +51,7 @@ public final class Renderer {
     private var encoder: (any MTL4RenderCommandEncoder)?
     private var currentDrawable: CAMetalDrawable?
     private var currentColorFormat: MTLPixelFormat = .invalid
+    private var meshGlobalUniformsAddr: MTLGPUAddress?
 
     /// Boot-time failures (no command queue, no engine metallib, etc.) are
     /// fatal — nothing useful can happen without these and recovery isn't
@@ -137,7 +146,14 @@ public final class Renderer {
     /// it begins. `drawable` is optional — pass nil for offscreen render
     /// passes (tests, render-to-texture). Internal — only `GameEngine`
     /// (or test code in this module) should call this.
-    func beginFrame(passDescriptor: MTL4RenderPassDescriptor, drawable: CAMetalDrawable? = nil) {
+    ///
+    /// Camera state is the game's responsibility: call `setCamera(viewProjection:)`
+    /// before the first `drawMesh` of the frame. Keeping it out of
+    /// `beginFrame` lets the game compose its view-projection however
+    /// it wants (and switch cameras mid-frame for split-screen / PIP)
+    /// without the renderer needing to know about Transform shape.
+    func beginFrame(passDescriptor: MTL4RenderPassDescriptor,
+                    drawable: CAMetalDrawable? = nil) {
         // Block if a previous frame is still in flight on the GPU. After
         // this returns, the upload buffer + allocator memory is safe to
         // reuse. `addCompletedHandler` on commit signals the semaphore
@@ -178,6 +194,23 @@ public final class Renderer {
             ))
         }
         uploadBuffer.clear()
+        // Each frame must re-establish camera state via `setCamera`;
+        // clearing here means a forgotten call traps in `drawMesh` rather
+        // than silently reusing last frame's view-projection.
+        self.meshGlobalUniformsAddr = nil
+    }
+
+    /// Upload a view-projection matrix and bind it as the per-frame mesh
+    /// global uniform. Must be called between `beginFrame` and the first
+    /// `drawMesh` of the frame. Calling again replaces the binding, so
+    /// switching cameras between draw groups (split-screen, picture-in-
+    /// picture) is just calling `setCamera` again before the next group.
+    public func setCamera(viewProjection: simd_float4x4) {
+        guard encoder != nil else {
+            fatalError("Renderer.setCamera called outside begin/endFrame")
+        }
+        let uniform = MeshGlobalUniform(viewProjectionMatrix: viewProjection)
+        meshGlobalUniformsAddr = uploadBuffer.allocate(uniform)
     }
 
     /// Close the encoder, schedule presentation if a drawable was bound,
@@ -224,6 +257,78 @@ public final class Renderer {
         return FrameCompletion(semaphore: completed)
     }
 
+    /// Register a mesh's GPU allocations with the renderer's residency
+    /// set so the queue keeps them resident across submissions. Must be
+    /// called before the first `drawMesh(_:)` referencing this mesh —
+    /// without it, the encoder records draws against a non-resident
+    /// allocation and the GPU faults at submission. Idempotent: each
+    /// underlying MTLBuffer is added at most once across all `register`
+    /// calls for the lifetime of this renderer.
+    public func register(_ mesh: MTKMesh) {
+        var added = false
+        for vbuf in mesh.vertexBuffers {
+            if knownAllocations.insert(ObjectIdentifier(vbuf.buffer)).inserted {
+                residencySet.addAllocation(vbuf.buffer)
+                added = true
+            }
+        }
+        for submesh in mesh.submeshes {
+            let buf = submesh.indexBuffer.buffer
+            if knownAllocations.insert(ObjectIdentifier(buf)).inserted {
+                residencySet.addAllocation(buf)
+                added = true
+            }
+        }
+        // Commit only if we actually added something — `commit()` is the
+        // expensive step, not `addAllocation`. Re-registering an already-
+        // known mesh is a no-op.
+        if added { residencySet.commit() }
+    }
+
+    /// Draw the given mesh with the appropriate transform. Issues one
+    /// indexed draw per `MTKSubmesh` — submeshes share the parent mesh's
+    /// vertex buffer but each owns its index buffer and primitive type.
+    ///
+    /// Follow-ups:
+    /// 1. Instanced drawing when multiple copies of the same mesh recur
+    /// 2. Game-driven uniforms in a different argument-table slot
+    public func drawMesh(_ mesh: MTKMesh, fragmentShader: String, meshTransform: Transform) {
+        guard let encoder else {
+            fatalError("Renderer.drawMesh called outside begin/endFrame")
+        }
+        let pso = pipelineStateForMesh(fragmentShader: fragmentShader, colorFormat: currentColorFormat)
+        encoder.setRenderPipelineState(pso)
+
+        // Vertex buffer at index 0. MTKMesh may pack into a parent allocation
+        // with a non-zero `offset`; bake it into the GPU address so submesh
+        // indices remain 0-based against the bound vertex base.
+        let vbuf = mesh.vertexBuffers.first!
+        argumentTable.setAddress(vbuf.buffer.gpuAddress + UInt64(vbuf.offset), index: 0)
+
+        // Per-frame global uniforms at buffer 1
+        guard let globalUniformsAddr = meshGlobalUniformsAddr else {
+            fatalError("Renderer.drawMesh: call setCamera(viewProjection:) before drawMesh in this frame")
+        }
+        argumentTable.setAddress(globalUniformsAddr, index: 1)
+
+        // Per-mesh model uniforms at buffer 2
+        let meshUniforms = MeshModelUniform(modelMatrix: meshTransform.matrix)
+        let meshUniformsAddress = uploadBuffer.allocate(meshUniforms)
+        argumentTable.setAddress(meshUniformsAddress, index: 2)
+
+        encoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])
+
+        for submesh in mesh.submeshes {
+            let ibuf = submesh.indexBuffer
+            encoder.drawIndexedPrimitives(
+                primitiveType: submesh.primitiveType,
+                indexCount: submesh.indexCount,
+                indexType: submesh.indexType,
+                indexBuffer: ibuf.buffer.gpuAddress + UInt64(ibuf.offset),
+                indexBufferLength: ibuf.length - ibuf.offset
+            )
+        }
+    }
     /// Issues a single fullscreen draw using the engine's `fullscreen_vertex`
     /// shader paired with a game-supplied fragment shader. The vertex shader
     /// synthesizes corners from `[[vertex_id]]`, so no vertex buffer is
@@ -237,7 +342,7 @@ public final class Renderer {
         guard let encoder else {
             fatalError("Renderer.drawFullscreenQuad called outside begin/endFrame")
         }
-        let pso = pipelineState(forFragment: fragmentShader, colorFormat: currentColorFormat)
+        let pso = pipelineStateForFullscreenQuad(fragmentShader: fragmentShader, colorFormat: currentColorFormat)
         encoder.setRenderPipelineState(pso)
 
         let address = uploadBuffer.allocate(uniforms)
@@ -249,35 +354,89 @@ public final class Renderer {
         encoder.drawPrimitives(primitiveType: .triangleStrip, vertexStart: 0, vertexCount: 4)
     }
 
-    private func pipelineState(forFragment name: String, colorFormat: MTLPixelFormat) -> MTLRenderPipelineState {
-        let key = PipelineKey(fragmentFunction: name, colorPixelFormat: colorFormat)
+    /// PSO for the engine's `fullscreen_vertex` paired with a game-supplied
+    /// fragment shader. No vertex buffer / vertex descriptor — the vertex
+    /// shader synthesizes corners from `[[vertex_id]]`.
+    private func pipelineStateForFullscreenQuad(
+        fragmentShader: String, colorFormat: MTLPixelFormat
+    ) -> MTLRenderPipelineState {
+        let key = PipelineKey(
+            vertexFunction: "fullscreen_vertex",
+            fragmentFunction: fragmentShader,
+            colorPixelFormat: colorFormat
+        )
+        return cachedPipelineState(key: key) {
+            let desc = MTL4RenderPipelineDescriptor()
+            desc.vertexFunctionDescriptor = libraryFn("fullscreen_vertex", in: engineLibrary)
+            desc.fragmentFunctionDescriptor = libraryFn(fragmentShader, in: requireGameLibrary("drawFullscreenQuad"))
+            desc.colorAttachments[0].pixelFormat = colorFormat
+            return desc
+        }
+    }
+
+    /// PSO for the engine's `mesh_vertex` paired with a game-supplied
+    /// fragment shader. Vertex layout is fixed: position (float3) + UV
+    /// (float2) interleaved in buffer 0, matching `MeshVertexIn` in
+    /// `EngineShaderTypes.h`.
+    private func pipelineStateForMesh(
+        fragmentShader: String, colorFormat: MTLPixelFormat
+    ) -> MTLRenderPipelineState {
+        let key = PipelineKey(
+            vertexFunction: "mesh_vertex",
+            fragmentFunction: fragmentShader,
+            colorPixelFormat: colorFormat
+        )
+        return cachedPipelineState(key: key) {
+            let desc = MTL4RenderPipelineDescriptor()
+            desc.vertexFunctionDescriptor = libraryFn("mesh_vertex", in: engineLibrary)
+            desc.fragmentFunctionDescriptor = libraryFn(fragmentShader, in: requireGameLibrary("drawMesh"))
+            desc.vertexDescriptor = Self.mtlMeshVertexDescriptor()
+            desc.colorAttachments[0].pixelFormat = colorFormat
+            return desc
+        }
+    }
+
+    /// Cache lookup + lazy creation + error handling for PSOs. Single
+    /// owner of the cache invariant — every PSO method funnels through
+    /// this so the dictionary stays consistent.
+    private func cachedPipelineState(
+        key: PipelineKey,
+        buildDescriptor: () -> MTL4RenderPipelineDescriptor
+    ) -> MTLRenderPipelineState {
         if let cached = pipelines[key] { return cached }
-
-        guard let library = gameLibrary else {
-            fatalError("Renderer: drawFullscreenQuad('\(name)') requires a game shader library, but none was loaded. Add a `.metal` file to the app target.")
-        }
-
-        let vertexFnDesc = MTL4LibraryFunctionDescriptor()
-        vertexFnDesc.name = "fullscreen_vertex"
-        vertexFnDesc.library = engineLibrary
-
-        let fragmentFnDesc = MTL4LibraryFunctionDescriptor()
-        fragmentFnDesc.name = name
-        fragmentFnDesc.library = library
-
-        let desc = MTL4RenderPipelineDescriptor()
-        desc.vertexFunctionDescriptor = vertexFnDesc
-        desc.fragmentFunctionDescriptor = fragmentFnDesc
-        desc.colorAttachments[0].pixelFormat = colorFormat
-
-        let pso: MTLRenderPipelineState
+        let desc = buildDescriptor()
         do {
-            pso = try compiler.makeRenderPipelineState(descriptor: desc)
+            let pso = try compiler.makeRenderPipelineState(descriptor: desc)
+            pipelines[key] = pso
+            return pso
         } catch {
-            fatalError("Renderer: makeRenderPipelineState failed for '\(name)' @ \(colorFormat): \(error)")
+            fatalError("Renderer: makeRenderPipelineState failed for \(key): \(error)")
         }
-        pipelines[key] = pso
-        return pso
+    }
+
+    private func libraryFn(_ name: String, in library: MTLLibrary) -> MTL4LibraryFunctionDescriptor {
+        let d = MTL4LibraryFunctionDescriptor()
+        d.name = name
+        d.library = library
+        return d
+    }
+
+    private func requireGameLibrary(_ caller: String) -> MTLLibrary {
+        guard let library = gameLibrary else {
+            fatalError("Renderer: \(caller) requires a game shader library, but none was loaded. Add a `.metal` file to the app target.")
+        }
+        return library
+    }
+
+    /// MTL form of the mesh layout, derived from `meshVertexDescriptor()`
+    /// via MetalKit. One source of truth — both `MeshLoader` (MDL form)
+    /// and the mesh PSO (this MTL form) come from the same definition,
+    /// so drift is impossible.
+    private static func mtlMeshVertexDescriptor() -> MTLVertexDescriptor {
+        guard let mtl = MTKMetalVertexDescriptorFromModelIO(meshVertexDescriptor()) else {
+            fatalError("Renderer: MTKMetalVertexDescriptorFromModelIO failed for the mesh vertex layout")
+        }
+        return mtl
     }
 }
 
@@ -287,6 +446,28 @@ extension Renderer {
     /// return false.
     public static func isMetal4Supported(on device: MTLDevice) -> Bool {
         device.supportsFamily(.metal4)
+    }
+
+    /// Canonical mesh vertex layout: position (float3) at offset 0 + UV
+    /// (float2) at offset 12, interleaved in buffer 0, stride 20. The
+    /// contract between `MeshLoader` (which reshapes incoming assets to
+    /// it via ModelIO) and the renderer's mesh PSO (which converts to
+    /// MTL form for the pipeline descriptor). Both consumers derive
+    /// from this — one source of truth, no drift.
+    public static func meshVertexDescriptor() -> MDLVertexDescriptor {
+        let d = MDLVertexDescriptor()
+        d.attributes[0] = MDLVertexAttribute(
+            name: MDLVertexAttributePosition,
+            format: .float3,
+            offset: 0,
+            bufferIndex: 0)
+        d.attributes[1] = MDLVertexAttribute(
+            name: MDLVertexAttributeTextureCoordinate,
+            format: .float2,
+            offset: 12,
+            bufferIndex: 0)
+        d.layouts[0] = MDLVertexBufferLayout(stride: 20)
+        return d
     }
 }
 
@@ -301,9 +482,21 @@ public struct FrameCompletion {
     }
 }
 
-/// PSO identity. Vertex function is fixed at `fullscreen_vertex` for v1 —
-/// add it to the key when a second substrate vertex shader appears.
+/// PSO identity: vertex + fragment + color format. Vertex function name
+/// must be in the key now that the renderer ships more than one substrate
+/// vertex shader (`fullscreen_vertex`, `mesh_vertex`) — same fragment +
+/// format with different vertex shaders is two distinct PSOs.
 private struct PipelineKey: Hashable {
+    let vertexFunction: String
     let fragmentFunction: String
     let colorPixelFormat: MTLPixelFormat
+}
+
+/// Mirrors of the Shaders/EngineShaderTypes.h definition
+private struct MeshGlobalUniform {
+    var viewProjectionMatrix: simd_float4x4
+}
+
+private struct MeshModelUniform {
+    var modelMatrix: simd_float4x4
 }

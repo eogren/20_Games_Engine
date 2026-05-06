@@ -1,4 +1,6 @@
 import Metal
+import MetalKit
+import simd
 import Testing
 @testable import Engine
 
@@ -123,5 +125,69 @@ import Testing
                 "top-right.r (\(topRight.r)) should dominate bottom-left.r (\(bottomLeft.r))")
         #expect(topRight.g > bottomLeft.g + 192,
                 "top-right.g (\(topRight.g)) should dominate bottom-left.g (\(bottomLeft.g))")
+    }
+
+    /// End-to-end pixel test for the mesh path. Loads the unit quad
+    /// fixture, registers it for residency, sets a camera positioned so
+    /// the quad covers the framebuffer center but not its corners, and
+    /// asserts the readback matches that footprint. This is the first
+    /// test that actually exercises `register` + `setCamera` + indexed
+    /// `drawMesh` together — silent failures (GPU fault on non-resident
+    /// allocation, indexed-draw issuing zero triangles, view-projection
+    /// inverted) all surface as a wrong center pixel here.
+    ///
+    /// Geometry math: camera at (0, 0, 3) looking at the origin, fov 90°,
+    /// aspect 1. Visible half-height at z=0 is 3*tan(45°)=3, so the
+    /// ±1 quad covers ±1/3 of NDC — i.e., the center third of the
+    /// framebuffer. Pixel (1, 1) is well outside that, pixel (32, 32)
+    /// is well inside.
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs test metallib + engine metallib in their bundles (xcodebuild test) and a Metal-4-capable GPU"))
+    @MainActor func drawMeshRendersQuadOverFramebufferCenter() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(),
+                                  "no Metal device — Apple Silicon hardware expected")
+        let testLibrary = try #require(
+            try? device.makeDefaultLibrary(bundle: .module),
+            "couldn't load test metallib from Bundle.module — run via xcodebuild test"
+        )
+        let renderer = Renderer(device: device, gameLibrary: testLibrary)
+
+        let quadURL = try #require(
+            Bundle.module.url(forResource: "quad", withExtension: "obj", subdirectory: "Meshes"),
+            "quad.obj missing from test bundle"
+        )
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
+        let mesh = try await loader.loadMesh(from: quadURL)
+        renderer.register(mesh)
+
+        let target = try OffscreenColorTarget(device: device, width: 64, height: 64)
+        // Cyan clear so any leftover clear-color leakage in the center
+        // is loud (cyan is maximally different from the shader's red).
+        let clearPass = target.clearPass(MTLClearColorMake(0, 1, 1, 1))
+
+        var camera = Transform.identity
+        camera.translation = [0, 0, 3]
+        camera.lookAt([0, 0, 0])
+        let proj = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 0.1, far: 100)
+        let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
+
+        renderer.beginFrame(passDescriptor: clearPass)
+        renderer.setCamera(viewProjection: vp)
+        renderer.drawMesh(mesh, fragmentShader: "mesh_solid_red", meshTransform: .identity)
+        renderer.endFrame().waitUntilCompleted()
+
+        let pixels = target.readback()
+
+        // Center: quad covers it → red.
+        let center = pixels[target.width / 2, target.height / 2]
+        #expect(center.r > 223, "center red should be near 255, got \(center.r)")
+        #expect(center.g < 32,  "center green should be near 0 (no clear leakage), got \(center.g)")
+        #expect(center.b < 32,  "center blue should be near 0 (no clear leakage), got \(center.b)")
+
+        // Corner: quad doesn't cover it → cyan clear color survives.
+        let corner = pixels[1, 1]
+        #expect(corner.r < 32,  "corner red should be near 0 (cyan clear), got \(corner.r)")
+        #expect(corner.g > 223, "corner green should be near 255, got \(corner.g)")
+        #expect(corner.b > 223, "corner blue should be near 255, got \(corner.b)")
     }
 }

@@ -1,5 +1,4 @@
 import Metal
-@preconcurrency import ModelIO
 import QuartzCore
 
 @MainActor
@@ -15,7 +14,7 @@ public final class GameEngine {
     public init(device: MTLDevice, gameLibrary: MTLLibrary?, game: any Game) {
         self.keyboard = Keyboard()
         self.renderer = Renderer(device: device, gameLibrary: gameLibrary)
-        self.meshLoader = MeshLoader(device: device, vertexDescriptor: Self.meshVertexDescriptor())
+        self.meshLoader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
         self.game = game
     }
 
@@ -39,25 +38,5 @@ public final class GameEngine {
         game.update(ctx, dt: dt)
         renderer.endFrame()
         keyboard.endFrame()
-    }
-
-    /// Phase-1 mesh layout: position (float3) + UV (float2), interleaved
-    /// in buffer 0. The renderer's mesh PSO will key off this same shape;
-    /// kept as the engine's single owner of the convention until that
-    /// PSO surfaces and pulls the descriptor next to itself.
-    private static func meshVertexDescriptor() -> MDLVertexDescriptor {
-        let d = MDLVertexDescriptor()
-        d.attributes[0] = MDLVertexAttribute(
-            name: MDLVertexAttributePosition,
-            format: .float3,
-            offset: 0,
-            bufferIndex: 0)
-        d.attributes[1] = MDLVertexAttribute(
-            name: MDLVertexAttributeTextureCoordinate,
-            format: .float2,
-            offset: 12,
-            bufferIndex: 0)
-        d.layouts[0] = MDLVertexBufferLayout(stride: 20)
-        return d
     }
 }
