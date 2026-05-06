@@ -36,14 +36,24 @@ struct OffscreenColorTarget {
     /// Pass descriptor that targets this texture with `loadAction = .clear`
     /// at the given clear color. Each call returns a fresh descriptor —
     /// MTL4 descriptors are cheap and reusing one across frames is a
-    /// bug-magnet.
-    func clearPass(_ clearColor: MTLClearColor) -> MTL4RenderPassDescriptor {
+    /// bug-magnet. Optionally attaches a depth target with `loadAction =
+    /// .clear` at `clearDepth = 1.0` and `storeAction = .dontCare`, so
+    /// depth-aware tests get the same one-call ergonomics.
+    func clearPass(_ clearColor: MTLClearColor,
+                   depth: OffscreenDepthTarget? = nil) -> MTL4RenderPassDescriptor {
         let pass = MTL4RenderPassDescriptor()
         let color = pass.colorAttachments[0]!
         color.texture = texture
         color.loadAction = .clear
         color.storeAction = .store
         color.clearColor = clearColor
+        if let depth {
+            let d = pass.depthAttachment!
+            d.texture = depth.texture
+            d.loadAction = .clear
+            d.storeAction = .dontCare
+            d.clearDepth = 1.0
+        }
         return pass
     }
 
@@ -97,4 +107,33 @@ struct BGRA: Equatable {
     let a: UInt8
 
     static let opaqueBlack = BGRA(b: 0, g: 0, r: 0, a: 255)
+}
+
+/// Companion to `OffscreenColorTarget`: a depth render target sized to
+/// match its color partner. `.depth32Float` matches what the platform
+/// host will use; `.private` storage is fine because tests don't read
+/// depth values back, only assert what survives in the *color* target
+/// after the depth test runs.
+struct OffscreenDepthTarget {
+    let texture: MTLTexture
+    let width: Int
+    let height: Int
+
+    init(device: MTLDevice, width: Int, height: Int,
+         pixelFormat: MTLPixelFormat = .depth32Float) throws {
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: pixelFormat,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        desc.usage = .renderTarget
+        desc.storageMode = .private
+        guard let tex = device.makeTexture(descriptor: desc) else {
+            throw OffscreenColorTarget.OffscreenError.textureAllocationFailed
+        }
+        self.texture = tex
+        self.width = width
+        self.height = height
+    }
 }

@@ -18,3 +18,11 @@ fragment float4 mesh_solid_red(MeshVertexOut in [[stage_in]]) {
     (void)in;
     return float4(1.0, 0.0, 0.0, 1.0);
 }
+
+// Sibling of `mesh_solid_red` for tests that need to tell two overlapping
+// draws apart in the readback (e.g. depth-occlusion tests where the
+// near draw is red and the far draw is blue).
+fragment float4 mesh_solid_blue(MeshVertexOut in [[stage_in]]) {
+    (void)in;
+    return float4(0.0, 0.0, 1.0, 1.0);
+}
