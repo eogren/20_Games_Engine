@@ -80,6 +80,19 @@ import Testing
     // need to reject, fixture it then.
 
     @Test(.enabled(if: metalAvailable, "skipped: no Metal device"))
+    func rejectsAssetMissingRequestedSemantics() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let loader = MeshLoader(device: device, vertexDescriptor: Self.phase1Descriptor())
+        let url = try Self.fixture(named: "quad_no_uv", ext: "obj")
+
+        // The descriptor asks for position + UV; the file has only
+        // position. Loud throw beats a silent zero-filled UV channel.
+        await #expect(throws: MeshError.missingAttributes([MDLVertexAttributeTextureCoordinate])) {
+            _ = try await loader.loadMesh(from: url)
+        }
+    }
+
+    @Test(.enabled(if: metalAvailable, "skipped: no Metal device"))
     func rejectsMissingFile() async throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
         let loader = MeshLoader(device: device, vertexDescriptor: Self.phase1Descriptor())
