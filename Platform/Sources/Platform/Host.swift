@@ -119,10 +119,12 @@ public final class Host: NSObject {
         lastTimestamp = now
 
         // nextDrawable can return nil under window-server pressure or when
-        // the layer has zero size. Skip the frame — the display link will
-        // fire again shortly.
+        // the layer has zero size. depthTexture is nil until the first
+        // layout pass sizes it. Skip the frame in either case — the
+        // display link will fire again shortly.
         guard let view = metalView,
-              let drawable = view.metalLayer.nextDrawable() else {
+              let drawable = view.metalLayer.nextDrawable(),
+              let depthTexture = view.depthTexture else {
             return
         }
 
@@ -132,6 +134,12 @@ public final class Host: NSObject {
         color.loadAction = .clear
         color.storeAction = .store
         color.clearColor = MTLClearColorMake(0, 0, 0, 1)
+
+        let depth = pass.depthAttachment!
+        depth.texture = depthTexture
+        depth.loadAction = .clear
+        depth.storeAction = .dontCare
+        depth.clearDepth = 1.0
 
         engine.update(dt: dt, drawable: drawable, passDescriptor: pass)
     }
