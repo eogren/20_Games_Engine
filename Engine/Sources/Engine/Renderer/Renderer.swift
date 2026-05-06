@@ -494,7 +494,11 @@ extension Renderer {
     /// it via ModelIO) and the renderer's mesh PSO (which converts to
     /// MTL form for the pipeline descriptor). Both consumers derive
     /// from this — one source of truth, no drift.
-    public static func meshVertexDescriptor() -> MDLVertexDescriptor {
+    ///
+    /// `nonisolated` so non-`@MainActor` callers (`MeshLoader`, tests
+    /// running off the main actor) can read it without hop boilerplate.
+    /// The builder is pure value construction — no shared state to race.
+    public nonisolated static func meshVertexDescriptor() -> MDLVertexDescriptor {
         let d = MDLVertexDescriptor()
         d.attributes[0] = MDLVertexAttribute(
             name: MDLVertexAttributePosition,
