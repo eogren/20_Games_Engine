@@ -60,16 +60,18 @@ public struct Transform: Sendable {
 
     public static let identity = Transform()
 
-    /// Aim the object's forward (`-Z` in object space) at `target`,
-    /// rotating in place around `translation`. `worldUp` stabilizes
-    /// roll; defaults to `+Y`. Translation and scale are untouched.
+    /// Aim the object's forward (`+Y` in object space, Blender Z-up
+    /// convention) at `target`, rotating in place around `translation`.
+    /// `worldUp` stabilizes roll; defaults to `+Z`. Translation and scale
+    /// are untouched.
     ///
     /// Traps if `target` equals `translation` (no direction to aim) or
     /// if the resulting forward is parallel to `worldUp` (no unique roll
     /// — see `simd_quatf.lookRotation`). Common parallel-case gotcha is
-    /// looking straight up or down with default `+Y` up; pass a
-    /// different `worldUp` when forward is near-vertical.
-    public mutating func lookAt(_ target: Vec3, worldUp: Vec3 = [0, 1, 0]) {
+    /// looking straight along world +Z or -Z with default `+Z` up; pass
+    /// a different `worldUp` (e.g. `[0, 1, 0]`) when forward is
+    /// near-vertical.
+    public mutating func lookAt(_ target: Vec3, worldUp: Vec3 = [0, 0, 1]) {
         precondition(length_squared(target - translation) > 1e-12,
             "Transform.lookAt: target must differ from translation (both = \(target))")
         rotation = .lookRotation(forward: target - translation, up: worldUp)

@@ -14,6 +14,12 @@ Unity, Unreal, and Godot are useful **cross-references** for catching cases wher
 
 This is a *design heuristic*, not a hard rule. If Bevy and substrate-first ever conflict on a specific decision, substrate-first wins — wait for 2–3 games before extracting workflow on top of substrate, regardless of how Bevy structures its workflow layer.
 
+## Coordinate convention
+
+World space is **Blender-style right-handed Z-up**: +X right, +Y forward, +Z up. Object-local forward is **+Y** (not -Z), which is what `simd_quatf.lookRotation` and `Transform.lookAt` aim at the target. This deliberately diverges from Bevy/Apple/OpenGL's Y-up default — the motivation is zero-translation OBJ imports from Blender, which is the asset pipeline. Quaternion right-hand rule (`aroundX/Y/Z`) is unaffected; that's a property of `simd_quatf`, not the world frame.
+
+View space and the perspective projection are **unchanged** by this choice. `float4x4.perspective` still produces a right-handed projection where the camera looks down view-space -Z (Metal's clip-space convention is fixed regardless of world orientation). The world-to-view matrix handles the world-Z-up → view-Y-up swap when it's built — that's the only place the conventions meet.
+
 ## Layer split
 
 **`Engine/`** — game logic, simulation state, math, input handling, **and rendering**. Imports system frameworks freely (Metal, GameController, QuartzCore, Foundation). The bulk of the engine lives here. Knows nothing about windows, app lifecycle, or platform-specific event loops.
