@@ -3,12 +3,23 @@
 /// `update(_:dt:)` once per display refresh.
 @MainActor
 public protocol Game: AnyObject {
+    /// One-time async setup: load meshes, parse JSON, etc. Runs once after
+    /// the engine is constructed but before the first `update` tick — the
+    /// platform host blocks the display link from starting until this
+    /// returns, so the game is guaranteed to see populated assets in
+    /// frame 0. Default impl does nothing for games with no async setup.
+    func load(_ ctx: GameContext) async throws
+
     /// Must stay synchronous. `GameEngine.update` relies on this method
     /// running atomically on MainActor between input-event handling and
     /// `keyboard.endFrame()` — an `await` here would let a queued input
     /// Task land mid-tick, and its pressed-edge would be cleared before
     /// game code ever observed it.
     func update(_ ctx: GameContext, dt: Float)
+}
+
+extension Game {
+    public func load(_ ctx: GameContext) async throws {}
 }
 
 /// Per-frame handle the engine passes to game code. Acts as an explicit
@@ -18,4 +29,5 @@ public protocol Game: AnyObject {
 public struct GameContext {
     public let keyboard: Keyboard
     public let renderer: Renderer
+    public let meshLoader: MeshLoader
 }

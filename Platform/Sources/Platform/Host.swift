@@ -75,6 +75,33 @@ public final class Host: NSObject {
         // installed; without this, Cmd-Q is a no-op.
         app.mainMenu = Self.makeMainMenu()
 
+        // Defer the display link until the game's async load completes —
+        // ticking against an unloaded game would produce frames where mesh
+        // assets aren't bound yet. The Task suspends inside `engine.load()`
+        // (MeshLoader hops to a detached background task for file IO), so
+        // the main runloop started by `app.run()` below is free to dispatch
+        // its continuation back here when load finishes.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.engine.load()
+            } catch {
+                fatalError("Host: engine.load() failed: \(error)")
+            }
+            self.startDisplayLink()
+        }
+
+        app.activate()
+        app.run()
+    }
+
+    /// Attaches a CADisplayLink to the main runloop so `tick(_:)` fires
+    /// once per display refresh. Pulled out of `run()` so it can be
+    /// deferred until after `engine.load()` completes.
+    private func startDisplayLink() {
+        guard let view = metalView else {
+            fatalError("Host.startDisplayLink: metalView not set — run() should have created it")
+        }
         // CADisplayLink fires on the runloop it's added to, so attaching to
         // .main keeps the tick on the main thread (where @MainActor lives).
         let link = view.displayLink(target: self, selector: #selector(tick(_:)))
@@ -84,9 +111,6 @@ public final class Host: NSObject {
         }
         link.add(to: .main, forMode: .common)
         self.displayLink = link
-
-        app.activate()
-        app.run()
     }
 
     @objc private func tick(_ link: CADisplayLink) {
