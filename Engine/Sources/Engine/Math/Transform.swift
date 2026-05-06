@@ -14,12 +14,13 @@ import simd
 ///     yAngle += dt * spinRate
 ///     cube.transform.rotation = .aroundY(yAngle)
 ///
-/// The cached `matrix` is for game-side use (transforming points
-/// between object and world space, collision queries, attachment
-/// points). The renderer's draw API still takes simulation-shaped
-/// `(position, rotation)` inputs per the substrate decision and
-/// composes its own model matrix internally; `Transform.matrix` is not
-/// on that path.
+/// The cached `matrix` is the model matrix the renderer uploads per
+/// draw — `drawMesh(_:fragmentShader:meshTransform:)` takes a
+/// `Transform` and reads `.matrix` directly. Game-side queries
+/// (transforming points between object and world space, collision,
+/// attachment points) read from the same cache. A matrix-input
+/// `drawMesh` overload is deferred until a non-Transform source for
+/// model matrices appears (skinning, instanced animation).
 public struct Transform: Sendable {
     public var translation: Vec3 = .zero {
         didSet { rebuildMatrix() }

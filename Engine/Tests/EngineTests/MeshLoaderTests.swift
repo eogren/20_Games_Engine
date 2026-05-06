@@ -9,24 +9,6 @@ import Testing
 @Suite struct MeshLoaderTests {
     static let metalAvailable: Bool = MTLCreateSystemDefaultDevice() != nil
 
-    /// Phase-1 layout: position (float3) + UV (float2), interleaved in
-    /// buffer 0. Mirrors what a substrate-first mesh PSO will expect.
-    static func phase1Descriptor() -> MDLVertexDescriptor {
-        let d = MDLVertexDescriptor()
-        d.attributes[0] = MDLVertexAttribute(
-            name: MDLVertexAttributePosition,
-            format: .float3,
-            offset: 0,
-            bufferIndex: 0)
-        d.attributes[1] = MDLVertexAttribute(
-            name: MDLVertexAttributeTextureCoordinate,
-            format: .float2,
-            offset: 12,
-            bufferIndex: 0)
-        d.layouts[0] = MDLVertexBufferLayout(stride: 20)
-        return d
-    }
-
     static func fixture(named name: String, ext: String) throws -> URL {
         try #require(
             Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Meshes"),
@@ -37,7 +19,7 @@ import Testing
     @Test(.enabled(if: metalAvailable, "skipped: no Metal device"))
     func loadsSingleMeshQuad() async throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let loader = MeshLoader(device: device, vertexDescriptor: Self.phase1Descriptor())
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
         let url = try Self.fixture(named: "quad", ext: "obj")
 
         let mesh = try await loader.loadMesh(from: url)
@@ -50,7 +32,7 @@ import Testing
     @Test(.enabled(if: metalAvailable, "skipped: no Metal device"))
     func reshapesToRequestedLayout() async throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let loader = MeshLoader(device: device, vertexDescriptor: Self.phase1Descriptor())
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
         let url = try Self.fixture(named: "quad", ext: "obj")
 
         let mesh = try await loader.loadMesh(from: url)
@@ -82,7 +64,7 @@ import Testing
     @Test(.enabled(if: metalAvailable, "skipped: no Metal device"))
     func rejectsAssetMissingRequestedSemantics() async throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let loader = MeshLoader(device: device, vertexDescriptor: Self.phase1Descriptor())
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
         let url = try Self.fixture(named: "quad_no_uv", ext: "obj")
 
         // The descriptor asks for position + UV; the file has only
@@ -95,7 +77,7 @@ import Testing
     @Test(.enabled(if: metalAvailable, "skipped: no Metal device"))
     func rejectsMissingFile() async throws {
         let device = try #require(MTLCreateSystemDefaultDevice())
-        let loader = MeshLoader(device: device, vertexDescriptor: Self.phase1Descriptor())
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
         let url = URL(fileURLWithPath: "/tmp/definitely-does-not-exist-\(UUID().uuidString).obj")
 
         // MDLAsset(url:) doesn't throw on a missing file — it just produces
