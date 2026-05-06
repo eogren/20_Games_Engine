@@ -68,22 +68,16 @@ caching hide. No game logic yet.
   - Decide: is depth always-on, or opt-in per draw? Default always-on is
     simpler; revisit if a 2D-only path appears.
 
-- [ ] **Math: 4x4 matrices + camera helpers.**
-  - `float4x4` (typealias to `simd_float4x4` is fine) with `*` for compose.
-    `simd_float4x4` is column-major (Metal's convention) — no transpose
-    needed crossing the CPU/GPU boundary. Operators compile to NEON
-    instructions on Apple Silicon (parallel FMAs, single-digit ns per
-    matmul); no need to reach for Accelerate/AMX at 4x4 scale.
-  - `float4x4.perspective(fovY:aspect:near:far:)` — Metal NDC z range is
-    [0,1], not [-1,1]; get this right or depth-test silently fails.
-  - `float4x4.lookAt(eye:target:up:)` — produces the world-to-camera
-    transform directly. Avoids constructing a camera transform and
-    inverting it; ergonomic for both static poses and per-frame rebuilds
-    when the camera follows the bird.
-  - `float4x4.translation(_:)`, `.rotationX(_:)`, `.rotationY(_:)`,
-    `.rotationZ(_:)`, `.scale(_:)`.
-  - Orthographic projection helper deferred to Phase 3 — first user is
-    HUD/text rendering. YAGNI until then.
+- [x] **Math: 4x4 matrices + camera helpers.** Done via the Bevy-shape
+  `Transform` substrate (PRs #10–#12) plus `float4x4.perspective`
+  (PR #14) and `float4x4.viewPerspectiveMatrix(cameraTransform:cameraPerspective:)`
+  (PR #17). The standalone `float4x4.translation/rotationX/Y/Z/scale`
+  builders originally listed here are superseded — Transform's quat-canonical
+  rotation + cached 4x4 covers the per-object case, and the perspective +
+  viewProjection helpers cover the camera case. `Transform.lookAt(_:)`
+  replaces the proposed `float4x4.lookAt(eye:target:up:)` (sim-shape
+  rather than matrix-shape; matches the sim/render split). Orthographic
+  helper still deferred to Phase 3.
 
 - [x] **Mesh type + loader (ModelIO/MetalKit-backed).** Done — `MeshLoader`
   (Engine/Renderer/MeshLoader.swift) wraps `MTKMesh` loading via `MDLAsset` +
@@ -98,58 +92,50 @@ caching hide. No game logic yet.
   attributes throw `MeshError.missingAttributes` instead of zero-filling.
   (PR #8)
 
-- [ ] **Standard mesh shader (engine substrate).**
-  - `Sources/Engine/Shaders/StandardMesh.metal` adds `standard_mesh_vertex`
-    that takes a vertex struct + per-frame `ViewUniforms { viewProj, lightDir,
-    lightColor, ambient }` at buffer 1, and per-draw `ModelUniforms { model,
-    normalMatrix }` at buffer 2.
-  - Game ships a `lit` (or named) fragment that consumes interpolated
-    world-space normal + a base color uniform at fragment buffer 0.
+- [ ] **Standard mesh shader (engine substrate).** Partial — `Sources/Engine/Shaders/StandardMesh.metal`
+  ships `mesh_vertex` (PR #19) with per-frame `MeshGlobalUniform { viewProjectionMatrix }`
+  at buffer 1 and per-draw `MeshModelUniform { modelMatrix }` at buffer 2.
+  Lighting fields (`lightDir`, `lightColor`, `ambient`) and `normalMatrix`
+  are deferred until a lit fragment surfaces — the cube draw uses a
+  UV-only fragment for now, so the substrate hasn't needed them. World-
+  space normal pass-through and the `lit` fragment land together when
+  the demo actually wants shading.
 
-- [ ] **Shared shader-types header (Engine→Game→Tests).**
-  - `Sources/Engine/Shaders/EngineShaderTypes.h` declares `ViewUniforms`
-    and `ModelUniforms` (and any future shared structs) using `simd` types
-    (`simd_float4x4`, `simd_float3`, etc.) so the Swift, Metal, and C
-    compilers all see compatible memory layouts. Single source of truth.
-  - Engine `.metal` files `#include "EngineShaderTypes.h"` for the buffer
-    parameter types in `standard_mesh_vertex`. Game `.metal` files do the
-    same for any fragment that consumes view/model uniforms. Tests too,
-    once a renderer test grows uniforms beyond the current dummy.
-  - Swift side: a small C-header sibling target (or a header exposed via
-    SwiftPM `headerSearchPaths`) re-exports the same types into Swift,
-    so `GameEngine.update` can populate `ViewUniforms` without
-    hand-mirroring the layout.
-  - Wiring caveats: Metal compiler needs `MTL_HEADER_SEARCH_PATHS` (Xcode)
-    or `headerSearchPaths` (SwiftPM) pointing at the engine's header dir
-    from each target that consumes it. Use `simd_*` typedefs exclusively
-    in shared structs — bare `float3` is 12 bytes in C / 16 in Metal, a
-    silent layout-mismatch trap. Stick to numeric types; bools/enums
-    don't share cleanly.
-  - Why now and not earlier: with one production uniforms struct
-    (`BackgroundUniforms { time }`) the duplication is one line per side
-    and the wiring overhead would dwarf the savings. `ViewUniforms` +
-    `ModelUniforms` is where hand-mirroring becomes a real bug source —
-    add a field on one side and forget on the other and you get garbage
-    on the GPU with no validation error. Land the header alongside the
-    standard mesh shader, before the second consumer copies the layout.
+- [x] **Shared shader-types header (Engine→Game→Tests).** `Sources/Engine/Shaders/EngineShaderTypes.h`
+  declares `MeshVertexIn/Out`, `MeshGlobalUniform`, `MeshModelUniform`
+  (PR #19). Engine `.metal` files include it directly (same source tree).
+  Game `.metal` files (FlappyBird) include it via `MTL_HEADER_SEARCH_PATHS`
+  in the Xcode project pointing at the engine's `Shaders` dir. Test
+  shaders inline mirror structs — different bundle, different boundary,
+  small enough to duplicate. Remaining gap: Swift-side bridge — the
+  renderer still hand-mirrors `MeshGlobalUniform` / `MeshModelUniform`
+  as private Swift structs in `Renderer.swift`. Layout drift between
+  the C header and the Swift mirrors would silently produce garbage
+  on the GPU. Worth folding in when a third consumer surfaces or the
+  structs grow fields beyond `simd_float4x4`.
 
-- [ ] **Renderer.drawMesh API.**
-  - `drawMesh(_ mesh: Mesh, fragmentShader: String, uniforms: U, modelMatrix: float4x4)`
-    — pairs `standard_mesh_vertex` with the named game fragment, uploads model
-    + normal matrix to vertex buffer 2, fragment uniforms to fragment buffer 0,
-    issues `drawIndexedPrimitives`.
-  - View uniforms (viewProj, light) live somewhere set once per frame — see
-    next item.
+- [x] **Renderer.drawMesh API.** Done in PR #19. Final shape:
+  `drawMesh(_ mesh: MTKMesh, fragmentShader: String, meshTransform: Transform)`
+  pairs `mesh_vertex` with the named game fragment, issues one
+  `drawIndexedPrimitives` per `MTKSubmesh`, and handles model-matrix
+  upload internally. Per-call fragment uniforms (the `uniforms: U` arg)
+  deferred per the typed-generic uniforms memo — re-introduce when a
+  fragment surfaces that needs them. Companion `register(_:)` adds a
+  mesh's vertex/index buffers to the residency set (dedup'd by
+  `ObjectIdentifier`); must be called once before the first `drawMesh`
+  for that mesh.
 
-- [ ] **Camera in GameContext + per-frame view binding.**
-  - Add `Camera` struct (eye, target, up, fovY, near, far) with a
-    `viewProjection(aspect:)` method built from `lookAt` + `perspective`.
-    V and P are per-frame constants; build VP once, ship it via the per-
-    frame uniform buffer rather than recomposing per object.
-  - `GameContext` exposes `camera: inout Camera` (game mutates it; engine
-    reads after `update` returns? or game sets at top of update? — pick one).
-  - `GameEngine.update` uploads `ViewUniforms` to vertex buffer 1 between
-    `beginFrame` and game `update`, so every `drawMesh` call inherits it.
+- [x] **Camera in GameContext + per-frame view binding.** Landed with a
+  different shape than originally proposed. Substrate is
+  `Renderer.setCamera(viewProjection:)` (PR #19), called by the game
+  inside its `update` before any `drawMesh`. No `Camera` struct on
+  `GameContext` and no engine-driven view-uniform upload — the game
+  composes its own VP using `Transform.lookAt` + `float4x4.perspective`
+  + `viewPerspectiveMatrix` and hands the matrix to the renderer. Keeps
+  `Transform` out of the renderer API per the sim/render split, and lets
+  a single frame switch cameras (split-screen / PIP) by calling
+  `setCamera` again between draw groups. The `Camera` struct extracts
+  later if 2-3 games end up writing the same eye/target/up/fov boilerplate.
 
 - [ ] **MyGame: fullscreen-quad background + spinning lit cube on top.**
   - Keep the existing `drawFullscreenQuad("background", ...)` call. Add

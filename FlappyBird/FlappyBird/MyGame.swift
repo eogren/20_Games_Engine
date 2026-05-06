@@ -16,7 +16,9 @@ final class MyGame: Game {
         guard let url = Bundle.main.url(forResource: "cube", withExtension: "obj") else {
             fatalError("MyGame.load: cube.obj missing from app bundle")
         }
-        cube = try await ctx.meshLoader.loadMesh(from: url)
+        let mesh = try await ctx.meshLoader.loadMesh(from: url)
+        ctx.renderer.register(mesh)
+        cube = mesh
     }
 
     func update(_ ctx: GameContext, dt: Float) {
@@ -25,8 +27,24 @@ final class MyGame: Game {
             fragmentShader: "background",
             uniforms: BackgroundUniforms(time: elapsed)
         )
-        // Cube draw lands when Renderer.drawMesh exists; load is wired
-        // first so the asset path is exercised end-to-end before the
-        // PSO/draw work surfaces.
+        guard let cube else { return }
+
+        // Camera at (3, 2, 4) looking at origin shows three faces of the
+        // cube at a comfortable 3D angle.
+        var camera = Transform.identity
+        camera.translation = [3, 2, 4]
+        camera.lookAt([0, 0, 0])
+        let size = ctx.renderer.drawableSize
+        let proj = float4x4.perspective(fovY: .pi / 3, aspect: size.x / size.y, near: 0.1, far: 100)
+        let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
+        ctx.renderer.setCamera(viewProjection: vp)
+
+        // Spin around Y at 1 rad/sec (~6.3s per revolution). No depth
+        // attachment yet, so back faces of the cube will overdraw front
+        // ones in places — visible artifact that the next engine PR
+        // resolves by adding a depth buffer.
+        var cubeTransform = Transform.identity
+        cubeTransform.rotation = .aroundY(elapsed)
+        ctx.renderer.drawMesh(cube, fragmentShader: "cube_uv", meshTransform: cubeTransform)
     }
 }

@@ -1,6 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "EngineShaderTypes.h"
+
 // Mirror of the engine's `FullscreenVOut`. The `[[user(locn0)]]`
 // annotation is part of the cross-library link contract — must match
 // the engine's vertex shader output declaration exactly.
@@ -19,4 +21,12 @@ fragment float4 background(FullscreenVOut in [[stage_in]],
     // pastel diagonal gradient that pulses in blue.
     float blue = 0.5 + 0.5 * sin(u.time);
     return float4(in.uv.x, in.uv.y, blue, 1.0);
+}
+
+// Cube fragment paired with the engine's `mesh_vertex`. Emits the
+// per-vertex UV directly into red/green so each face shows a different
+// gradient as the cube spins, making rotation visually obvious. Constant
+// blue 0.5 keeps it readable against the time-pulsing background.
+fragment float4 cube_uv(MeshVertexOut in [[stage_in]]) {
+    return float4(in.uv.x, in.uv.y, 0.5, 1.0);
 }
