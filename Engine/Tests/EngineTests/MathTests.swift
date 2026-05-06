@@ -191,6 +191,89 @@ import simd
     }
 }
 
+@Suite struct PerspectiveProjectionTests {
+    // Right-handed view space: camera looks down -Z, so points in front
+    // have negative view-space z. Metal NDC z range is [0, 1] (not the
+    // [-1, 1] GL convention) — these tests pin that boundary on both
+    // sides of the frustum.
+
+    @Test func pointOnNearPlaneMapsToNdcZZero() {
+        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let ndc = projectThenDivide(p, view: [0, 0, -1])
+        #expect(abs(ndc.z - 0) < tolerance)
+    }
+
+    @Test func pointOnFarPlaneMapsToNdcZOne() {
+        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let ndc = projectThenDivide(p, view: [0, 0, -100])
+        #expect(abs(ndc.z - 1) < tolerance)
+    }
+
+    @Test func midDepthLandsBetweenZeroAndOne() {
+        // A point between near and far must produce 0 < ndc.z < 1.
+        // Catches sign flips that would put it outside the unit range
+        // even when the endpoints happen to land correctly.
+        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let ndc = projectThenDivide(p, view: [0, 0, -10])
+        #expect(ndc.z > 0 && ndc.z < 1)
+    }
+
+    @Test func depthIsMonotonicallyIncreasingWithDistance() {
+        // Closer to the camera → smaller ndc.z. A sign error on the z
+        // row would invert this and make the depth test reject the wrong
+        // surfaces.
+        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let near = projectThenDivide(p, view: [0, 0, -2]).z
+        let far  = projectThenDivide(p, view: [0, 0, -50]).z
+        #expect(near < far)
+    }
+
+    @Test func ninetyDegreeFovMapsNearPlaneEdgeToNdcOne() {
+        // With fovY = 90° and aspect = 1, the near plane is a 2x2 square
+        // at z = -near. A point at (near, 0, -near) sits on the right
+        // edge and should project to ndc.x = +1.
+        let near: Float = 1
+        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: near, far: 100)
+        let ndc = projectThenDivide(p, view: [near, 0, -near])
+        #expect(abs(ndc.x - 1) < tolerance)
+        #expect(abs(ndc.y - 0) < tolerance)
+    }
+
+    @Test func aspectRatioCompressesXAxis() {
+        // Aspect = 2 (wider than tall) means horizontal FoV is wider, so
+        // the same world-space x lands at a smaller |ndc.x| than with
+        // aspect = 1. A point that hits ndc.x = 1 at aspect 1 should be
+        // at ndc.x = 0.5 at aspect 2.
+        let near: Float = 1
+        let pSquare = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: near, far: 100)
+        let pWide   = float4x4.perspective(fovY: .pi / 2, aspect: 2, near: near, far: 100)
+        let edge: SIMD4<Float> = [near, 0, -near, 1]
+        let ndcSquare = perspectiveDivide(pSquare * edge)
+        let ndcWide   = perspectiveDivide(pWide * edge)
+        #expect(abs(ndcSquare.x - 1) < tolerance)
+        #expect(abs(ndcWide.x - 0.5) < tolerance)
+    }
+
+    @Test func clipWEqualsNegativeViewZ() {
+        // Pre-divide w must equal -view.z so the perspective divide by w
+        // is a divide by positive depth-from-camera. If w is built wrong
+        // the perspective divide flips signs and the rasterizer culls
+        // everything.
+        let p = float4x4.perspective(fovY: .pi / 3, aspect: 1.5, near: 0.1, far: 50)
+        let clip = p * SIMD4<Float>(0, 0, -7, 1)
+        #expect(abs(clip.w - 7) < tolerance)
+    }
+}
+
+private func projectThenDivide(_ m: float4x4, view: Vec3) -> Vec3 {
+    let clip = m * SIMD4<Float>(view.x, view.y, view.z, 1)
+    return perspectiveDivide(clip)
+}
+
+private func perspectiveDivide(_ clip: SIMD4<Float>) -> Vec3 {
+    Vec3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w)
+}
+
 private func applyMatrix(_ m: simd_float4x4, to p: Vec3) -> Vec3 {
     let r = m * SIMD4<Float>(p.x, p.y, p.z, 1)
     return Vec3(r.x, r.y, r.z)
