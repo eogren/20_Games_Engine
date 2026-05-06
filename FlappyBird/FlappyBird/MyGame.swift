@@ -39,10 +39,6 @@ final class MyGame: Game {
         let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
         ctx.renderer.setCamera(viewProjection: vp)
 
-        // Spin around Y at 1 rad/sec (~6.3s per revolution). No depth
-        // attachment yet, so back faces of the cube will overdraw front
-        // ones in places — visible artifact that the next engine PR
-        // resolves by adding a depth buffer.
         var cubeTransform = Transform.identity
         cubeTransform.rotation = .aroundY(elapsed)
         ctx.renderer.drawMesh(cube, fragmentShader: "cube_uv", meshTransform: cubeTransform)
