@@ -26,7 +26,10 @@ vertex FullscreenVOut fullscreen_vertex(uint vid [[vertex_id]]) {
     // Bit 0 picks x ∈ {0,1}, bit 1 picks y ∈ {0,1}; remap to NDC ∈ {-1,+1}.
     float2 p = float2(float(vid & 1), float((vid >> 1) & 1)) * 2.0 - 1.0;
     FullscreenVOut o;
-    o.position = float4(p, 0, 1);
+    // z=1 parks the quad at the far plane so under always-on lessEqual
+    // depth (and clearDepth=1.0) any 3D content drawn into the same pass
+    // wins regardless of submission order.
+    o.position = float4(p, 1, 1);
     o.uv = p * 0.5 + 0.5;
     return o;
 }

@@ -210,4 +210,78 @@ import Testing
         #expect(corner.g > 223, "corner green should be near 255, got \(corner.g)")
         #expect(corner.b > 223, "corner blue should be near 255, got \(corner.b)")
     }
+
+    /// Pins down the depth substrate: with a depth attachment on the pass
+    /// (the platform host's normal shape), the closer mesh wins the
+    /// center pixel regardless of which mesh was issued first. Without
+    /// depth, this test would fail in whichever order draws the far
+    /// mesh second — that's the regression this guards against.
+    ///
+    /// Geometry: camera at world (0,0,3) looking at origin, fov 90°,
+    /// aspect 1. Near quad sits at z=+1 (camera-distance 2), far quad
+    /// at z=-1 (camera-distance 4). Both cover the framebuffer center;
+    /// the lessEqual depth test must pick whichever was drawn at
+    /// smaller NDC z.
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs test metallib + engine metallib in their bundles (xcodebuild test) and a Metal-4-capable GPU"))
+    @MainActor func depthOcclusionPicksClosestRegardlessOfDrawOrder() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(),
+                                  "no Metal device — Apple Silicon hardware expected")
+        let testLibrary = try #require(
+            try? device.makeDefaultLibrary(bundle: .module),
+            "couldn't load test metallib from Bundle.module — run via xcodebuild test"
+        )
+
+        let quadURL = try #require(
+            Bundle.module.url(forResource: "quad", withExtension: "obj", subdirectory: "Meshes"),
+            "quad.obj missing from test bundle"
+        )
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
+        let mesh = try await loader.loadMesh(from: quadURL)
+
+        var camera = Transform.identity
+        camera.translation = [0, 0, 3]
+        camera.lookAt([0, 0, 0])
+        let proj = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 0.1, far: 100)
+        let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
+
+        var nearTransform = Transform.identity
+        nearTransform.translation = [0, 0, 1]   // closer to camera at z=3
+        var farTransform = Transform.identity
+        farTransform.translation = [0, 0, -1]   // farther from camera
+
+        // Same submission run twice, swapping draw order. A correct depth
+        // implementation gives the same answer both times. A broken one
+        // gives last-drawn-wins, so one of the two runs would fail.
+        for nearFirst in [true, false] {
+            // Fresh renderer per run so the inflight semaphore doesn't
+            // need a `waitUntilCompleted` round-trip between runs to be
+            // safe. Cheap to construct.
+            let renderer = Renderer(device: device, gameLibrary: testLibrary)
+            renderer.register(mesh)
+
+            let color = try OffscreenColorTarget(device: device, width: 64, height: 64)
+            let depth = try OffscreenDepthTarget(device: device, width: 64, height: 64)
+            // Cyan clear: maximally different from both red (near) and
+            // blue (far) so any leakage is loud in the readback.
+            let pass = color.clearPass(MTLClearColorMake(0, 1, 1, 1), depth: depth)
+
+            renderer.beginFrame(passDescriptor: pass)
+            renderer.setCamera(viewProjection: vp)
+            if nearFirst {
+                renderer.drawMesh(mesh, fragmentShader: "mesh_solid_red",  meshTransform: nearTransform)
+                renderer.drawMesh(mesh, fragmentShader: "mesh_solid_blue", meshTransform: farTransform)
+            } else {
+                renderer.drawMesh(mesh, fragmentShader: "mesh_solid_blue", meshTransform: farTransform)
+                renderer.drawMesh(mesh, fragmentShader: "mesh_solid_red",  meshTransform: nearTransform)
+            }
+            renderer.endFrame().waitUntilCompleted()
+
+            let pixels = color.readback()
+            let center = pixels[color.width / 2, color.height / 2]
+            let order = nearFirst ? "near-then-far" : "far-then-near"
+            #expect(center.r > 223, "\(order): center should be red (near won), got r=\(center.r)")
+            #expect(center.b < 32,  "\(order): center blue should be near 0 (far lost), got b=\(center.b)")
+        }
+    }
 }

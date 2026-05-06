@@ -34,6 +34,7 @@ public final class Renderer {
     private let inflightSemaphore = DispatchSemaphore(value: 1)
     private let engineLibrary: MTLLibrary
     private let gameLibrary: MTLLibrary?
+    private let defaultDepthState: MTLDepthStencilState
     private var pipelines: [PipelineKey: MTLRenderPipelineState] = [:]
     /// Identity set of MTLBuffers already added to `residencySet`, so
     /// `register(_:)` can dedup. Keyed by `ObjectIdentifier` because
@@ -134,6 +135,18 @@ public final class Renderer {
         }
         self.engineLibrary = engineLib
 
+        let depthDesc = MTLDepthStencilDescriptor()
+        // `.lessEqual` (not `.less`) so the substrate fullscreen quad —
+        // which emits z=1 to sit at the far plane — still draws against
+        // a `clearDepth = 1.0` buffer.
+        depthDesc.depthCompareFunction = .lessEqual
+        depthDesc.isDepthWriteEnabled = true
+        depthDesc.label = "Renderer.defaultDepthState"
+        guard let depthState = device.makeDepthStencilState(descriptor: depthDesc) else {
+            fatalError("Renderer: makeDepthStencilState failed")
+        }
+        self.defaultDepthState = depthState
+
         // Resources must be added + the set committed before the queue
         // can use them. The queue holds the residency set across all
         // submissions until `removeResidencySet` is called.
@@ -184,6 +197,14 @@ public final class Renderer {
         // it so the same fragment shader gets distinct PSOs across formats.
         let target = passDescriptor.colorAttachments[0].texture
         currentColorFormat = target?.pixelFormat ?? .invalid
+        // Always-on depth: when the pass has a depth attachment, bind the
+        // shared lessEqual + write-enabled state for every draw in this
+        // frame. Skip the bind when there's no depth attachment so the
+        // existing color-only test passes don't drag in depth state they
+        // never asked for.
+        if passDescriptor.depthAttachment.texture != nil {
+            enc.setDepthStencilState(defaultDepthState)
+        }
         // Metal 4 doesn't auto-infer a viewport from the color attachment
         // the way classic Metal did; without this call the rasterizer
         // produces fragments but they don't land on the target texture.
