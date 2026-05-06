@@ -1,0 +1,11 @@
+# Position-only fixture for MeshLoaderTests.missingAttributes path: same
+# quad geometry as quad.obj but with no `vt` lines and no `/vt` indices
+# in the face list. A loader configured for position + UV should reject
+# this rather than silently zero-fill the UV channel.
+o quad_no_uv
+v -1 -1 0
+v  1 -1 0
+v  1  1 0
+v -1  1 0
+f 1 2 3
+f 1 3 4
