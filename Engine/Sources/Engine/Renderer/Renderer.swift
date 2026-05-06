@@ -28,7 +28,7 @@ public final class Renderer {
     private let compiler: any MTL4Compiler
     private let argumentTable: any MTL4ArgumentTable
     private let residencySet: any MTLResidencySet
-    private let uploadBuffer: any MTLBuffer
+    private let uploadBuffer: UploadBuffer
     private let inflightSemaphore = DispatchSemaphore(value: 1)
     private let engineLibrary: MTLLibrary
     private let gameLibrary: MTLLibrary?
@@ -43,7 +43,6 @@ public final class Renderer {
     private var encoder: (any MTL4RenderCommandEncoder)?
     private var currentDrawable: CAMetalDrawable?
     private var currentColorFormat: MTLPixelFormat = .invalid
-    private var uploadOffset = 0
 
     /// Boot-time failures (no command queue, no engine metallib, etc.) are
     /// fatal — nothing useful can happen without these and recovery isn't
@@ -106,11 +105,11 @@ public final class Renderer {
         // single-in-flight gate, no risk of overlap. `.storageModeShared`
         // gives us a CPU-writable pointer with no blit needed on Apple
         // Silicon's unified memory.
-        guard let upload = device.makeBuffer(length: Self.uploadBufferCapacity, options: .storageModeShared) else {
-            fatalError("Renderer: failed to allocate upload buffer")
-        }
-        upload.label = "Renderer.uploadBuffer"
-        self.uploadBuffer = upload
+        self.uploadBuffer = UploadBuffer(
+            device: device,
+            length: Self.uploadBufferCapacity,
+            label: "Renderer.uploadBuffer"
+        )
 
         let resDesc = MTLResidencySetDescriptor()
         resDesc.label = "Renderer.residencySet"
@@ -128,7 +127,7 @@ public final class Renderer {
         // Resources must be added + the set committed before the queue
         // can use them. The queue holds the residency set across all
         // submissions until `removeResidencySet` is called.
-        residencySet.addAllocation(uploadBuffer)
+        residencySet.addAllocation(uploadBuffer.buffer)
         residencySet.commit()
         queue.addResidencySet(residencySet)
     }
@@ -178,7 +177,7 @@ public final class Renderer {
                 znear: 0, zfar: 1
             ))
         }
-        uploadOffset = 0
+        uploadBuffer.clear()
     }
 
     /// Close the encoder, schedule presentation if a drawable was bound,
@@ -241,25 +240,9 @@ public final class Renderer {
         let pso = pipelineState(forFragment: fragmentShader, colorFormat: currentColorFormat)
         encoder.setRenderPipelineState(pso)
 
-        // Bump-allocate uniform space in the upload buffer. 16-byte align
-        // covers SIMD-aligned types; revisit if a uniform demands 256
-        // (hardware constant-buffer alignment on some targets).
-        let stride = MemoryLayout<U>.stride
-        let alignment = 16
-        uploadOffset = (uploadOffset + alignment - 1) & ~(alignment - 1)
-        guard uploadOffset + stride <= Self.uploadBufferCapacity else {
-            fatalError("Renderer: upload buffer overflow (\(stride) bytes won't fit at offset \(uploadOffset) of \(Self.uploadBufferCapacity))")
-        }
-        var copy = uniforms
-        let dst = uploadBuffer.contents().advanced(by: uploadOffset)
-        withUnsafePointer(to: &copy) { src in
-            dst.copyMemory(from: UnsafeRawPointer(src), byteCount: stride)
-        }
-
-        argumentTable.setAddress(uploadBuffer.gpuAddress + UInt64(uploadOffset), index: 0)
+        let address = uploadBuffer.allocate(uniforms)
+        argumentTable.setAddress(address, index: 0)
         encoder.setArgumentTable(argumentTable, stages: .fragment)
-
-        uploadOffset += stride
 
         // Triangle strip covering NDC: 4 verts, 2 triangles. Vertex shader
         // synthesizes positions from vertex_id.
