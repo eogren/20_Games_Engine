@@ -526,12 +526,6 @@ public struct FrameCompletion {
 /// must be in the key now that the renderer ships more than one substrate
 /// vertex shader (`fullscreen_vertex`, `mesh_vertex`) — same fragment +
 /// format with different vertex shaders is two distinct PSOs.
-///
-/// Depth format intentionally absent: `MTL4RenderPipelineDescriptor`
-/// doesn't carry a `depthAttachmentPixelFormat` (unlike classic
-/// `MTLRenderPipelineDescriptor`), so a single PSO is reusable across
-/// depth-attached and depth-less passes. Depth state binds on the
-/// encoder via `setDepthStencilState`.
 private struct PipelineKey: Hashable {
     let vertexFunction: String
     let fragmentFunction: String
