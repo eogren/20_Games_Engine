@@ -51,6 +51,7 @@ public final class Renderer {
     private var encoder: (any MTL4RenderCommandEncoder)?
     private var currentDrawable: CAMetalDrawable?
     private var currentColorFormat: MTLPixelFormat = .invalid
+    private var currentDrawableSize: SIMD2<Float>?
     private var meshGlobalUniformsAddr: MTLGPUAddress?
 
     /// Boot-time failures (no command queue, no engine metallib, etc.) are
@@ -187,11 +188,14 @@ public final class Renderer {
         // the way classic Metal did; without this call the rasterizer
         // produces fragments but they don't land on the target texture.
         if let target {
+            currentDrawableSize = SIMD2<Float>(Float(target.width), Float(target.height))
             enc.setViewport(MTLViewport(
                 originX: 0, originY: 0,
                 width: Double(target.width), height: Double(target.height),
                 znear: 0, zfar: 1
             ))
+        } else {
+            currentDrawableSize = nil
         }
         uploadBuffer.clear()
         // Each frame must re-establish camera state via `setCamera`;
@@ -253,8 +257,23 @@ public final class Renderer {
         self.encoder = nil
         self.currentDrawable = nil
         self.currentColorFormat = .invalid
+        self.currentDrawableSize = nil
 
         return FrameCompletion(semaphore: completed)
+    }
+
+    /// The current frame's render-target size in pixels, valid between
+    /// `beginFrame` and `endFrame`. Use to derive a correctly-aspected
+    /// projection matrix:
+    /// `let aspect = renderer.drawableSize.x / renderer.drawableSize.y`.
+    /// Traps if accessed outside a frame, or during a frame whose pass
+    /// descriptor has no color attachment texture (which the renderer's
+    /// other paths already disallow in practice).
+    public var drawableSize: SIMD2<Float> {
+        guard let size = currentDrawableSize else {
+            fatalError("Renderer.drawableSize: only valid between beginFrame and endFrame")
+        }
+        return size
     }
 
     /// Register a mesh's GPU allocations with the renderer's residency

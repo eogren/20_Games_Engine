@@ -127,6 +127,26 @@ import Testing
                 "top-right.g (\(topRight.g)) should dominate bottom-left.g (\(bottomLeft.g))")
     }
 
+    /// Pins down `Renderer.drawableSize` against a non-square render
+    /// target so a future regression that swaps width/height (or
+    /// drops one dimension to 0) trips immediately. Games rely on this
+    /// to build aspect-correct projection matrices — getting it wrong
+    /// silently distorts every 3D draw.
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs engine metallib (xcodebuild test) and a Metal-4-capable GPU"))
+    @MainActor func drawableSizeReportsRenderTargetDimensions() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(),
+                                  "no Metal device — Apple Silicon hardware expected")
+        let renderer = Renderer(device: device, gameLibrary: nil)
+        let target = try OffscreenColorTarget(device: device, width: 80, height: 40)
+
+        renderer.beginFrame(passDescriptor: target.clearPass(MTLClearColorMake(0, 0, 0, 1)))
+        let size = renderer.drawableSize
+        renderer.endFrame().waitUntilCompleted()
+
+        #expect(size == SIMD2<Float>(80, 40))
+    }
+
     /// End-to-end pixel test for the mesh path. Loads the unit quad
     /// fixture, registers it for residency, sets a camera positioned so
     /// the quad covers the framebuffer center but not its corners, and
