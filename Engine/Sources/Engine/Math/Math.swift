@@ -43,6 +43,19 @@ extension float4x4 {
             SIMD4<Float>(0,          0,  zBias,  0)
         )
     }
+
+    /// Combined view-projection matrix for a camera placed at
+    /// `cameraTransform` looking through `cameraPerspective`. The world-
+    /// to-view matrix is the inverse of the camera's transform — i.e.,
+    /// "where the world goes when the camera moves to the origin." With
+    /// the engine's Y-up world / -Z forward object convention,
+    /// `cameraTransform.matrix.inverse` matches view space directly, so
+    /// no basis swap is needed before the projection.
+    public static func viewPerspectiveMatrix(
+        cameraTransform: Transform, cameraPerspective: float4x4
+    ) -> float4x4 {
+        cameraPerspective * cameraTransform.matrix.inverse
+    }
 }
 
 extension simd_quatf {
