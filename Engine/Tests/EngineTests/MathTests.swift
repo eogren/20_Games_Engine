@@ -38,22 +38,21 @@ import simd
         #expect(approx(simd_quatf.aroundZ(0).act(v), v))
     }
 
-    @Test func lookRotationAlongPlusYIsIdentity() {
-        // Forward = +Y, up = +Z matches the canonical Blender Z-up
-        // object basis, so the resulting rotation must be a no-op on
-        // every axis.
-        let q = simd_quatf.lookRotation(forward: [0, 1, 0])
-        #expect(approx(q.act([0, 1, 0]), [0, 1, 0]))
-        #expect(approx(q.act([1, 0, 0]), [1, 0, 0]))
-        #expect(approx(q.act([0, 0, 1]), [0, 0, 1]))
+    @Test func lookRotationAlongMinusZIsIdentity() {
+        // Forward = -Z, up = +Y matches the canonical object basis, so
+        // the resulting rotation must be a no-op on every axis.
+        let q = simd_quatf.lookRotation(forward: [0, 0, -1])
+        #expect(approx(q.act([0, 0, -1]), [0, 0, -1]))
+        #expect(approx(q.act([1, 0, 0]),  [1, 0, 0]))
+        #expect(approx(q.act([0, 1, 0]),  [0, 1, 0]))
     }
 
     @Test func lookRotationAimsObjectForwardAlongInputForward() {
         let target: Vec3 = [3, 0, 0]
         let q = simd_quatf.lookRotation(forward: target)
-        // Object's local forward is +Y; after lookRotation it should
+        // Object's local forward is -Z; after lookRotation it should
         // align with the normalized input forward.
-        #expect(approx(q.act([0, 1, 0]), normalize(target)))
+        #expect(approx(q.act([0, 0, -1]), normalize(target)))
     }
 
     @Test func lookRotationNormalizesInput() {
@@ -61,7 +60,7 @@ import simd
         // rotation (within tolerance).
         let q1 = simd_quatf.lookRotation(forward: [1, 0, 0])
         let q2 = simd_quatf.lookRotation(forward: [100, 0, 0])
-        #expect(approx(q1.act([0, 1, 0]), q2.act([0, 1, 0])))
+        #expect(approx(q1.act([0, 0, -1]), q2.act([0, 0, -1])))
     }
 }
 
@@ -97,19 +96,18 @@ import simd
     @Test func lookAtFromOriginToPlusXAimsForwardAtPlusX() {
         var t = Transform.identity
         t.lookAt([10, 0, 0])
-        // Object's local forward (+Y, Blender Z-up), rotated by the new
-        // orientation, should point along +X.
-        #expect(approx(t.rotation.act([0, 1, 0]), [1, 0, 0]))
+        // Object's local forward (-Z), rotated by the new orientation,
+        // should point along +X.
+        #expect(approx(t.rotation.act([0, 0, -1]), [1, 0, 0]))
     }
 
     @Test func lookAtAimsAtTargetFromArbitraryPosition() {
-        // Pick an axis perpendicular to default worldUp (+Z) so the
-        // direction isn't parallel to up. Looking from +5X to -5X means
-        // the world-space forward direction is -X.
-        var t = Transform(translation: [5, 0, 0])
-        t.lookAt([-5, 0, 0])
-        let forwardWorld = t.rotation.act([0, 1, 0])
-        #expect(approx(forwardWorld, [-1, 0, 0]))
+        var t = Transform(translation: [0, 0, 5])
+        t.lookAt([0, 0, -5])
+        let forwardWorld = t.rotation.act([0, 0, -1])
+        // Looking from +5Z toward -5Z means the world-space forward
+        // direction is -Z.
+        #expect(approx(forwardWorld, [0, 0, -1]))
     }
 
     @Test func lookAtPreservesTranslationAndScale() {
@@ -186,10 +184,10 @@ import simd
     @Test func lookAtUpdatesMatrix() {
         var t = Transform(translation: [0, 0, 0])
         t.lookAt([10, 0, 0])
-        // After lookAt, object-local forward (+Y, Blender Z-up) should
-        // map to +X direction in world space (translation is origin, so
-        // the matrix's rotation portion alone determines the result).
-        #expect(approx(applyMatrix(t.matrix, to: [0, 1, 0]), [1, 0, 0]))
+        // After lookAt, object-local forward (-Z) should map to +X
+        // direction in world space (translation is origin, so the
+        // matrix's rotation portion alone determines the result).
+        #expect(approx(applyMatrix(t.matrix, to: [0, 0, -1]), [1, 0, 0]))
     }
 }
 
