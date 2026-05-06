@@ -6,6 +6,14 @@ This is an Apple-only game engine. Two Swift packages: `Engine/` and `Platform/`
 
 Targets macOS 14+ and iPadOS 17+, both Metal-backed. **Vulkan / DX12 / WebGPU are explicitly out of scope.** Don't design abstractions for backends that won't exist. Engine is free to use Metal vocabulary directly (`MTLDevice`, `MTLBuffer`, `MTLRenderPipelineState`, etc.) without protocol-wrapping ceremony.
 
+## Design influences
+
+**Bevy is the primary design reference.** When facing engine-level design decisions (Transform shape, component split, scheduling, hierarchy, asset loading), Bevy's solution is the default starting point, not Unity's or Unreal's. Reason: Bevy's value-type / decomposed-struct ergonomics translate cleanly to Swift's struct + protocol model, and its substrate-first philosophy aligns with this codebase's own. Concretely: `Transform` is Bevy-shape (translation + quaternion + scale, quat-canonical), rotation APIs favor multiplicative composition the way `Transform.rotate_y` does, and the renderer's draw API takes simulation-shaped inputs the way Bevy systems read components.
+
+Unity, Unreal, and Godot are useful **cross-references** for catching cases where Bevy's choice doesn't translate — either because Apple/Metal patterns argue for something different, or because Bevy's choice is Rust-language-specific and would be awkward in Swift. Reference order when in doubt: Bevy first, then the others for sanity checks.
+
+This is a *design heuristic*, not a hard rule. If Bevy and substrate-first ever conflict on a specific decision, substrate-first wins — wait for 2–3 games before extracting workflow on top of substrate, regardless of how Bevy structures its workflow layer.
+
 ## Layer split
 
 **`Engine/`** — game logic, simulation state, math, input handling, **and rendering**. Imports system frameworks freely (Metal, GameController, QuartzCore, Foundation). The bulk of the engine lives here. Knows nothing about windows, app lifecycle, or platform-specific event loops.
