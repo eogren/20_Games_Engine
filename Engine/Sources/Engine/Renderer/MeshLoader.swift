@@ -26,7 +26,15 @@ public enum MeshError: Error, Equatable {
 /// `MTLDevice` is documented thread-safe (and `Sendable`), so it's cheap to
 /// share. `MTKMeshBufferAllocator` is not documented thread-safe, so we
 /// build a fresh one inside each task instead of caching it on `self`.
-public final class MeshLoader {
+///
+/// `@unchecked Sendable`: the class is effectively immutable after init
+/// (both stored properties are `let`, and `vertexDescriptor` is a defensive
+/// copy that we never mutate). Each `loadMesh` call also takes its own
+/// per-call copy of the descriptor before handing work to a detached task,
+/// so concurrent loads never share an MDLVertexDescriptor instance. The
+/// `Sendable` conformance lets `@MainActor` callers (Game.load,
+/// renderer tests) await `loadMesh` without a Sendable-self violation.
+public final class MeshLoader: @unchecked Sendable {
     private let device: MTLDevice
     private let vertexDescriptor: MDLVertexDescriptor
 
