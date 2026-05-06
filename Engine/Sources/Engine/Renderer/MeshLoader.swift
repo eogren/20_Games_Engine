@@ -33,7 +33,12 @@ public final class MeshLoader {
 
     public func loadMesh(from url: URL) async throws -> MTKMesh {
         let device = self.device
-        let descriptor = self.vertexDescriptor
+        // Per-call copy. Two overlapping loads must not share an
+        // MDLVertexDescriptor instance — Apple doesn't document
+        // MDLAsset's read/write behavior on the descriptor, so we don't
+        // risk concurrent access on a shared object. Same reasoning as
+        // building the allocator inside the task.
+        let descriptor = MDLVertexDescriptor(vertexDescriptor: self.vertexDescriptor)
         return try await Task.detached(priority: .background) {
             let allocator = MTKMeshBufferAllocator(device: device)
             let asset = MDLAsset(url: url, vertexDescriptor: descriptor, bufferAllocator: allocator)
