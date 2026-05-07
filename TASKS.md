@@ -59,14 +59,22 @@ depth-tested cube *on top* of it. Two distinct render paths coexisting in
 one frame is the real test — single-cube would let bugs in PSO/depth/format
 caching hide. No game logic yet.
 
-- [ ] **Depth attachment plumbing.**
-  - `Platform/MetalView` allocates a depth texture matching the drawable size,
-    rebuilds it on resize, and sets `depthAttachment` on the pass descriptor
-    each tick (load=clear, store=dontCare, clearDepth=1.0).
-  - `Renderer` learns the depth pixel format at `beginFrame` and includes it
-    in `PipelineKey` so PSOs are cached per (fragment, color, depth) tuple.
-  - Decide: is depth always-on, or opt-in per draw? Default always-on is
-    simpler; revisit if a 2D-only path appears.
+**Status:** closed as of 2026-05-06 with the lighting cut deferred to
+phase 3. The substrate, depth, mesh, two-PSO-coexistence, camera, and
+both-platforms-running pieces all landed; the cube renders with a UV
+fragment instead of Lambertian. Calling phase 1 done because the
+substrate is what phase 2 actually depends on, and phase 2 will surface
+the next concrete pain that justifies engine work — including, possibly,
+lighting if the bare cube reads as too flat against the procedural floor.
+
+- [x] **Depth attachment plumbing.** Done in PRs #22 / #23.
+  `Platform/MetalView` allocates a depth texture matching drawable size,
+  rebuilds it on resize, and sets `depthAttachment` (clear / dontCare /
+  clearDepth=1.0) each tick. `Renderer` picks up the depth pixel format
+  at `beginFrame` and folds it into `PipelineKey` so PSOs cache per
+  (fragment, color, depth) tuple. Resolved as always-on with
+  `lessEqual` compare + write — opt-in per-draw remains a future
+  option if a 2D-only path appears.
 
 - [x] **Math: 4x4 matrices + camera helpers.** Done via the Bevy-shape
   `Transform` substrate (PRs #10–#12) plus `float4x4.perspective`
@@ -92,14 +100,16 @@ caching hide. No game logic yet.
   attributes throw `MeshError.missingAttributes` instead of zero-filling.
   (PR #8)
 
-- [ ] **Standard mesh shader (engine substrate).** Partial — `Sources/Engine/Shaders/StandardMesh.metal`
-  ships `mesh_vertex` (PR #19) with per-frame `MeshGlobalUniform { viewProjectionMatrix }`
+- [~] **Standard mesh shader (engine substrate).** Substrate done in PR #19
+  — `mesh_vertex` + per-frame `MeshGlobalUniform { viewProjectionMatrix }`
   at buffer 1 and per-draw `MeshModelUniform { modelMatrix }` at buffer 2.
-  Lighting fields (`lightDir`, `lightColor`, `ambient`) and `normalMatrix`
-  are deferred until a lit fragment surfaces — the cube draw uses a
-  UV-only fragment for now, so the substrate hasn't needed them. World-
-  space normal pass-through and the `lit` fragment land together when
-  the demo actually wants shading.
+  **Lighting deferred to phase 3.** The `lit` fragment, world-space
+  normal pass-through, and the lighting uniform fields (`lightDir`,
+  `lightColor`, `ambient`, `normalMatrix`) all land when a fragment
+  actually wants shading — currently the cube uses a UV fragment, which
+  exercises the vertex/per-draw substrate just fine. Picks back up
+  alongside "Bird mesh + gate aesthetic" (phase 3) or whenever the first
+  lit surface surfaces.
 
 - [x] **Shared shader-types header (Engine→Game→Tests).** `Sources/Engine/Shaders/EngineShaderTypes.h`
   declares `MeshVertexIn/Out`, `MeshGlobalUniform`, `MeshModelUniform`
@@ -137,36 +147,17 @@ caching hide. No game logic yet.
   `setCamera` again between draw groups. The `Camera` struct extracts
   later if 2-3 games end up writing the same eye/target/up/fov boilerplate.
 
-- [ ] **MyGame: fullscreen-quad background + spinning lit cube on top.**
-  - Keep the existing `drawFullscreenQuad("background", ...)` call. Add
-    `Mesh.load(named: "cube")` and a `drawMesh(cube, ...)` issued *after*
-    the quad in the same frame. Two PSOs, two draws, one render pass.
-  - ~~Author a unit cube in Blender, export `cube.obj` into the FlappyBird
-    app target's resources (Xcode-bundled, ends up in `Bundle.main`).~~ Done
-    on the `cube` branch — `FlappyBird/FlappyBird/Resources/cube.obj` is in
-    the synchronized resource folder; `MyGame.load(_:)` already loads it.
-  - Perspective camera at `eye=(0, 1, 5)`, `target=(0, 0, -10)`,
-    `up=(0, 1, 0)` — same pose Phase 2 will use. Cube placed around
-    `z=-3` orbits a small circle in the XY plane while spinning on Y —
-    the orbit exercises `translation`, the spin exercises `rotationY`,
-    and the composed model matrix proves the multiply order is right.
-    Perspective foreshortening should be visible as the cube moves
-    forward/backward in z (closer = bigger), which also validates the
-    projection itself. Catching sign/handedness/projection bugs here is
-    much cheaper than debugging them in phase 2 when six things are using
-    transforms at once.
-  - `Shaders.metal` gains a `lit` fragment (Lambertian, hardcoded base
-    color or color uniform).
-  - **Quad-vs-cube depth interaction.** The fullscreen quad's vertex
-    shader synthesizes NDC positions directly, so its z is whatever it
-    emits. With depth always-on, the cube must win the depth test against
-    the quad. Two clean options: (a) emit `position.z = 1.0` from the
-    fullscreen vertex shader so the quad sits at the far plane, or (b)
-    give the quad PSO a depth state of `compare = .always, write = false`
-    so it ignores depth entirely. Pick (a) if "background sits at far,
-    everything else draws over it" is a useful invariant; pick (b) if
-    you want the quad to be philosophically a 2D overlay decoupled from
-    the 3D world. (a) is probably the right answer.
+- [x] **MyGame: fullscreen-quad background + cube on top.** Done in
+  PRs #19 / #21 / #26. `drawFullscreenQuad("background", ...)` followed
+  by `drawMesh(cube, fragmentShader: "cube_uv", ...)` in the same
+  frame — two PSOs, two draws, one render pass, depth-tested.
+  Quad-vs-cube depth resolved by option (a): the fullscreen vertex
+  shader emits `position.z = 1.0` so the background sits at the far
+  plane and the cube wins the depth test naturally. Cube draws with a
+  UV fragment instead of the originally-planned Lambertian `lit` —
+  **lighting deferred to phase 3** (see "Standard mesh shader" above).
+  Pose, orbit, and rotation-axis toggle (#26) all land — the substrate
+  validates fine without shading.
   - **Blocker note:** this milestone needs a real `.obj` to exist. If you
     don't have one handy when implementing, Blender's default cube
     (File → New → General, then File → Export → Wavefront OBJ) is exactly
@@ -245,15 +236,6 @@ you tap/click/press space."
   both platforms. Title is accepted but ignored on iOS for portable
   call sites.
 
-- [ ] **iOS target in the FlappyBird Xcode project.**
-  - Lean toward a single multi-platform target over two separate
-    targets. Resources (`cube.obj`, `.metal` files) shared. Verify the
-    Metal toolchain compiles game `.metal` for both destinations under
-    one target.
-  - `App.swift` becomes `#if os(macOS) … #else … #endif` — AppKit
-    `Host(...).run()` on macOS, SwiftUI `App` on iOS hosting
-    `MetalView` via `UIViewControllerRepresentable`.
-
 - [x] **Verify Metal 4 + simulator behavior.** Resolved at the SDK
   level, ahead of any runtime check. As of Xcode 17 / iPhoneSimulator26.4,
   the iOS Simulator SDK ships *stub* MTL4 headers — `MTL4RenderPass.h`
@@ -288,11 +270,13 @@ you tap/click/press space."
   Synthwave app icon (1024×1024 master, discrete macOS sizes) shipped
   in the same PR.
 
-- [ ] **Smoke-test on a real iPad/iPhone.** Real device is the *only*
-  path that actually rasterizes — simulator is blocked by the MTL4
-  SDK gap. Confirms both that the GPU path runs and that
-  `touchesBegan` reaches `Pointer` through the real UIKit event chain.
-  One real-device run before declaring bringup done.
+- [x] **Smoke-test on a real iPad/iPhone.** Done — verified manually
+  on iPad on 2026-05-06. App launches, MetalView renders the
+  fullscreen-quad background + spinning cube on top, taps cycle the
+  rotation axis through Y → X → Z. Confirms the GPU path actually
+  rasterizes (no simulator equivalent thanks to the MTL4 SDK gap) and
+  that `touchesBegan` reaches `Pointer` through the real UIKit event
+  chain. iOS-bringup milestone closed.
 
 **Explicitly NOT in this milestone:**
 - **Multi-touch / drag / position-aware tap.** Phase 1's input demo is
