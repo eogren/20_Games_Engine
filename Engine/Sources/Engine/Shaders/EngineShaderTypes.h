@@ -11,6 +11,7 @@ struct MeshVertexIn {
 struct MeshVertexOut {
     float4 position [[position]];
     float2 uv;
+    float3 worldPosition;
 };
 
 /// Uniforms related to the current model
