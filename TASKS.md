@@ -267,19 +267,26 @@ you tap/click/press space."
   arm64 device SDK); simulator-based test runs against the renderer
   are blocked until Apple ships MTL4 in the simulator SDK.
 
-- [ ] **iOS target in the FlappyBird Xcode project.**
-  - Lean toward a single multi-platform target over two separate
-    targets. Resources (`cube.obj`, `.metal` files) shared. Verify the
-    Metal toolchain compiles game `.metal` for both destinations under
-    one target.
-  - `App.swift` becomes `#if os(macOS) … #else … #endif` — AppKit
-    `Host(...).run()` on macOS, SwiftUI `App` on iOS hosting
-    `Host.makeViewController()` via `UIViewControllerRepresentable`.
-  - **CI surface:** add an `xcodebuild build -destination 'generic/platform=iOS'`
-    step for FlappyBird (mirroring the existing macOS build step).
-    Simulator destinations are blocked by the MTL4 SDK gap above; an
-    iOS destination is build-only on CI and "deploy to a real device"
-    for actual smoke testing.
+- [x] **iOS target in the FlappyBird Xcode project.** Done — single
+  multi-platform target. Project-level `SDKROOT = auto` +
+  `SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx"` +
+  `IPHONEOS_DEPLOYMENT_TARGET = 26.0`. App target adds
+  `TARGETED_DEVICE_FAMILY = "1,2"` and the iOS Info.plist keys
+  (`UILaunchScreen_Generation`, supported orientations); macOS-only
+  build settings (`ENABLE_APP_SANDBOX`, `ENABLE_HARDENED_RUNTIME`,
+  `ENABLE_USER_SELECTED_FILES`, `COMBINE_HIDPI_IMAGES`,
+  `LD_RUNPATH_SEARCH_PATHS`) gated with `[sdk=macosx*]` qualifiers,
+  with `LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*|iphonesimulator*]`
+  added for the iOS bundle layout. Test targets (`FlappyBirdTests`,
+  `FlappyBirdUITests`) pinned to `SUPPORTED_PLATFORMS = macosx` —
+  `TEST_HOST` is shaped for the macOS bundle layout, and there's
+  no iOS-side test surface yet. `App.swift` is `#if os(macOS)`
+  AppKit `Host(...).run()` / `#elseif os(iOS)` SwiftUI `App` with
+  `HostView: UIViewControllerRepresentable` that constructs `Host`
+  inside `makeUIViewController`. CI gained a "Build FlappyBird for
+  iOS" step targeting `generic/platform=iOS` (real device, build-only).
+  Synthwave app icon (1024×1024 master, discrete macOS sizes) shipped
+  in the same PR.
 
 - [ ] **Smoke-test on a real iPad/iPhone.** Real device is the *only*
   path that actually rasterizes — simulator is blocked by the MTL4

@@ -58,6 +58,24 @@ jobs:
       # Targets generic iOS device (not Simulator): the iOS Simulator
       # SDK does not ship MTL4 types, so the renderer can't compile
       # against it. Real-device SDK does, and that's the deployment
-      # target anyway. Build-only — no run, no FlappyBird iOS target yet.
+      # target anyway. Build-only — no run.
       - name: Build Platform for iOS
         run: ./Platform/build-ios.sh
+
+      # Build-only iOS gate for FlappyBird itself. Same reasoning as
+      # above (real-device SDK, not Simulator). Catches game-side
+      # regressions in App.swift / .metal compilation before they
+      # reach a device.
+      - name: Build FlappyBird for iOS
+        working-directory: FlappyBird
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project FlappyBird.xcodeproj \
+            -scheme FlappyBird \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
