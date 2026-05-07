@@ -9,7 +9,25 @@ struct BackgroundUniforms {
     var time: Float
 }
 
-private enum RotationAxis { case x, y, z }
+private enum RotationAxis {
+    case x, y, z
+
+    var next: RotationAxis {
+        switch self {
+        case .y: .x
+        case .x: .z
+        case .z: .y
+        }
+    }
+
+    func rotation(_ angle: Float) -> simd_quatf {
+        switch self {
+        case .x: .aroundX(angle)
+        case .y: .aroundY(angle)
+        case .z: .aroundZ(angle)
+        }
+    }
+}
 
 final class MyGame: Game {
     private static let rotationSpeed: Float = 1.0  // rad/sec
@@ -36,19 +54,9 @@ final class MyGame: Game {
         elapsed += dt
 
         if ctx.keyboard.wasPressed(.space) || ctx.pointer.tappedThisFrame {
-            rotationAxis = switch rotationAxis {
-            case .y: .x
-            case .x: .z
-            case .z: .y
-            }
+            rotationAxis = rotationAxis.next
         }
-
-        let delta: simd_quatf = switch rotationAxis {
-        case .x: .aroundX(Self.rotationSpeed * dt)
-        case .y: .aroundY(Self.rotationSpeed * dt)
-        case .z: .aroundZ(Self.rotationSpeed * dt)
-        }
-        orientation = delta * orientation
+        orientation = rotationAxis.rotation(Self.rotationSpeed * dt) * orientation
 
         ctx.renderer.drawFullscreenQuad(
             fragmentShader: "background",
