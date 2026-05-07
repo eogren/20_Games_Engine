@@ -3,6 +3,43 @@ import AppKit
 import Engine
 import Metal
 import QuartzCore
+#elseif os(iOS)
+import Engine
+import Metal
+import QuartzCore
+import UIKit
+#endif
+
+/// Allocate a 2D multisample render-target texture with `MetalView.sampleCount`.
+/// Storage is `.memoryless` because both attachments are transient: the MSAA
+/// color is consumed by an on-chip resolve into the drawable, and depth is
+/// `storeAction = .dontCare`. Memoryless backings live entirely in tile memory
+/// on Apple Silicon — zero physical allocation. Shared by the macOS and iOS
+/// `MetalView` definitions, which each define their own `MetalView` class
+/// inside their respective `#if` branch.
+@MainActor
+private func makeMultisampleAttachment(
+    device: MTLDevice,
+    pixelFormat: MTLPixelFormat,
+    width: Int, height: Int,
+    label: String
+) -> MTLTexture {
+    let desc = MTLTextureDescriptor()
+    desc.textureType = .type2DMultisample
+    desc.pixelFormat = pixelFormat
+    desc.width = width
+    desc.height = height
+    desc.sampleCount = MetalView.sampleCount
+    desc.usage = .renderTarget
+    desc.storageMode = .memoryless
+    guard let tex = device.makeTexture(descriptor: desc) else {
+        fatalError("MetalView: failed to allocate \(label) (\(width)×\(height) ×\(MetalView.sampleCount))")
+    }
+    tex.label = label
+    return tex
+}
+
+#if os(macOS)
 
 /// AppKit view backed by a `CAMetalLayer`. Owns the layer's pixel format
 /// (a Platform-level decision since `CAMetalLayer` is what cares) and
@@ -14,11 +51,18 @@ import QuartzCore
 final class MetalView: NSView {
     static let pixelFormat: MTLPixelFormat = .bgra8Unorm
     static let depthFormat: MTLPixelFormat = .depth32Float
+    /// 4× MSAA: the standard Apple Silicon sweet spot. Samples live in
+    /// tile memory and resolve on-chip, so the only cost is a slightly
+    /// smaller tile and per-sample ROP work — a few percent on typical
+    /// scenes. The drawable stays single-sampled; we render into
+    /// `msaaColorTexture` and resolve out.
+    static let sampleCount: Int = 4
 
     let metalLayer: CAMetalLayer
     private let device: MTLDevice
     private let pointer: Pointer
     private(set) var depthTexture: MTLTexture?
+    private(set) var msaaColorTexture: MTLTexture?
 
     init(device: MTLDevice, pointer: Pointer) {
         self.device = device
@@ -74,32 +118,29 @@ final class MetalView: NSView {
             height: max(1, bounds.height * scale)
         )
         metalLayer.drawableSize = newSize
-        rebuildDepthTextureIfNeeded(size: newSize)
+        rebuildAttachmentsIfNeeded(size: newSize)
     }
 
-    private func rebuildDepthTextureIfNeeded(size: CGSize) {
+    private func rebuildAttachmentsIfNeeded(size: CGSize) {
         let width = Int(size.width)
         let height = Int(size.height)
-        // Skip if the existing texture already matches; setFrameSize fires
+        // Skip if existing textures already match; setFrameSize fires
         // for every layout pass and most of them don't actually resize.
         if let existing = depthTexture, existing.width == width, existing.height == height {
             return
         }
-        let desc = MTLTextureDescriptor.texture2DDescriptor(
+        depthTexture = makeMultisampleAttachment(
+            device: device,
             pixelFormat: MetalView.depthFormat,
-            width: width,
-            height: height,
-            mipmapped: false
+            width: width, height: height,
+            label: "MetalView.depthTexture"
         )
-        // .private: the GPU is the only reader. .renderTarget alone is
-        // enough — no shaderRead, no readback path on this allocation.
-        desc.usage = .renderTarget
-        desc.storageMode = .private
-        guard let tex = device.makeTexture(descriptor: desc) else {
-            fatalError("MetalView: failed to allocate depth texture (\(width)×\(height))")
-        }
-        tex.label = "MetalView.depthTexture"
-        depthTexture = tex
+        msaaColorTexture = makeMultisampleAttachment(
+            device: device,
+            pixelFormat: MetalView.pixelFormat,
+            width: width, height: height,
+            label: "MetalView.msaaColorTexture"
+        )
     }
 }
 
@@ -120,6 +161,12 @@ import UIKit
 final class MetalView: UIView {
     static let pixelFormat: MTLPixelFormat = .bgra8Unorm
     static let depthFormat: MTLPixelFormat = .depth32Float
+    /// 4× MSAA: the standard Apple Silicon sweet spot. Samples live in
+    /// tile memory and resolve on-chip, so the only cost is a slightly
+    /// smaller tile and per-sample ROP work — a few percent on typical
+    /// scenes. The drawable stays single-sampled; we render into
+    /// `msaaColorTexture` and resolve out.
+    static let sampleCount: Int = 4
 
     // The view's backing layer IS the Metal layer. Cleaner than the
     // macOS `wantsLayer + makeBackingLayer` recipe — UIKit picks up the
@@ -130,6 +177,7 @@ final class MetalView: UIView {
     private let device: MTLDevice
     private let pointer: Pointer
     private(set) var depthTexture: MTLTexture?
+    private(set) var msaaColorTexture: MTLTexture?
 
     init(device: MTLDevice, pointer: Pointer) {
         self.device = device
@@ -175,28 +223,27 @@ final class MetalView: UIView {
             height: max(1, bounds.height * scale)
         )
         metalLayer.drawableSize = newSize
-        rebuildDepthTextureIfNeeded(size: newSize)
+        rebuildAttachmentsIfNeeded(size: newSize)
     }
 
-    private func rebuildDepthTextureIfNeeded(size: CGSize) {
+    private func rebuildAttachmentsIfNeeded(size: CGSize) {
         let width = Int(size.width)
         let height = Int(size.height)
         if let existing = depthTexture, existing.width == width, existing.height == height {
             return
         }
-        let desc = MTLTextureDescriptor.texture2DDescriptor(
+        depthTexture = makeMultisampleAttachment(
+            device: device,
             pixelFormat: MetalView.depthFormat,
-            width: width,
-            height: height,
-            mipmapped: false
+            width: width, height: height,
+            label: "MetalView.depthTexture"
         )
-        desc.usage = .renderTarget
-        desc.storageMode = .private
-        guard let tex = device.makeTexture(descriptor: desc) else {
-            fatalError("MetalView: failed to allocate depth texture (\(width)×\(height))")
-        }
-        tex.label = "MetalView.depthTexture"
-        depthTexture = tex
+        msaaColorTexture = makeMultisampleAttachment(
+            device: device,
+            pixelFormat: MetalView.pixelFormat,
+            width: width, height: height,
+            label: "MetalView.msaaColorTexture"
+        )
     }
 }
 #endif
