@@ -43,6 +43,14 @@ final class MetalView: NSView {
         pointer.recordTap()
     }
 
+    // Keys flow through `Keyboard` (GameController), not the AppKit responder
+    // chain. But AppKit still dispatches keyDown to the responder chain in
+    // parallel; if no one consumes it, NSWindow falls back to NSBeep. Become
+    // first responder and swallow keyDown so the system stays quiet — game
+    // code reads `Keyboard` for the actual state.
+    override var acceptsFirstResponder: Bool { true }
+    override func keyDown(with event: NSEvent) {}
+
     override func makeBackingLayer() -> CALayer { metalLayer }
 
     override func setFrameSize(_ newSize: NSSize) {

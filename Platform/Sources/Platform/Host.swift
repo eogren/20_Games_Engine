@@ -54,6 +54,10 @@ public final class Host: NSObject {
 
         window.center()
         window.makeKeyAndOrderFront(nil)
+        // Without an explicit first responder, NSWindow itself sits at the
+        // top of the chain — keyDown bubbles up to it and beeps. Hand the
+        // role to MetalView so its keyDown override swallows the event.
+        window.makeFirstResponder(view)
         self.window = window
 
         // macOS keeps the app alive after the window closes so Dock-icon
