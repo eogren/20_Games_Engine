@@ -82,3 +82,40 @@ import Testing
         #expect(s.wasReleased(.space), "an intra-frame release still counts as a released edge")
     }
 }
+
+@MainActor
+@Suite struct PointerTests {
+    @Test func initialStateIsEmpty() {
+        let p = Pointer()
+        #expect(!p.tappedThisFrame)
+    }
+
+    @Test func recordTapSetsEdge() {
+        let p = Pointer()
+        p.recordTap()
+        #expect(p.tappedThisFrame)
+    }
+
+    @Test func multipleTapsInSameFrameCollapseToOneEdge() {
+        let p = Pointer()
+        p.recordTap()
+        p.recordTap()
+        p.recordTap()
+        #expect(p.tappedThisFrame, "edge stays high regardless of how many taps land in a frame")
+    }
+
+    @Test func endFrameClearsEdge() {
+        let p = Pointer()
+        p.recordTap()
+        p.endFrame()
+        #expect(!p.tappedThisFrame)
+    }
+
+    @Test func tapAfterEndFrameReSetsEdge() {
+        let p = Pointer()
+        p.recordTap()
+        p.endFrame()
+        p.recordTap()
+        #expect(p.tappedThisFrame)
+    }
+}

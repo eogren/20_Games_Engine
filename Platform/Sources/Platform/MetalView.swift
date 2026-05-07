@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Engine
 import Metal
 import QuartzCore
 
@@ -16,10 +17,12 @@ final class MetalView: NSView {
 
     let metalLayer: CAMetalLayer
     private let device: MTLDevice
+    private let pointer: Pointer
     private(set) var depthTexture: MTLTexture?
 
-    init(device: MTLDevice) {
+    init(device: MTLDevice, pointer: Pointer) {
         self.device = device
+        self.pointer = pointer
         let layer = CAMetalLayer()
         layer.device = device
         layer.pixelFormat = MetalView.pixelFormat
@@ -33,6 +36,12 @@ final class MetalView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("MetalView is code-only") }
+
+    // Single-click-anywhere → one Pointer edge per frame. Position-aware /
+    // multi-touch substrate waits for a real consumer.
+    override func mouseDown(with event: NSEvent) {
+        pointer.recordTap()
+    }
 
     override func makeBackingLayer() -> CALayer { metalLayer }
 

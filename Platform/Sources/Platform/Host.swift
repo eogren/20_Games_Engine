@@ -48,7 +48,7 @@ public final class Host: NSObject {
         )
         window.title = title
 
-        let view = MetalView(device: device)
+        let view = MetalView(device: device, pointer: engine.pointer)
         window.contentView = view
         self.metalView = view
 

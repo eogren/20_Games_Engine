@@ -210,30 +210,22 @@ you tap/click/press space."
   AppKit `Host`. Two entry styles is fine — both are small, and the
   asymmetry is honest about what each OS makes natural.
 
-- [ ] **Pointer substrate — Engine type, macOS wiring, MyGame demo.**
-  - New `Pointer` class in Engine, modeled on `Keyboard`'s passive-sink
-    shape: holds a per-frame `tappedThisFrame` edge, cleared by
-    `endFrame()`. Platform layers call `pointer.recordTap()` from their
-    OS-specific event hooks. `Pointer` lives in Engine (Engine never
-    imports Platform), but it gets *fed* by Platform — same direction
-    as `Keyboard`, except the source is platform-divergent instead of
-    cross-Apple, so Engine can't drive it directly.
-  - `GameEngine` exposes `pointer: Pointer` and clears its edge in
-    `update(...)` next to `keyboard.endFrame()`.
-  - macOS wiring: `MetalView` overrides `mouseDown(with:)` and calls
-    `pointer.recordTap()`. Same pattern iOS will use, just the AppKit
-    name.
-  - `MyGame` reads `keyboard.wasPressed(.space) || pointer.tappedThisFrame`
-    and toggles a `rotationAxis` field that picks which axis the cube
-    spins on (Y → X → Z → Y). Color-swap would be more visible but
-    forces re-introducing per-call fragment uniforms (deferred per
-    phase 1's `drawMesh` task) — keep that as a follow-up, not this
-    milestone's scope.
-  - Open: should `Pointer` carry tap *position*? For this demo, no.
-    But adding it later would change the API. Could phrase as
-    `pointer.takeTap() -> Tap?` (where `Tap` carries position) from
-    the start so the call site can ignore position when it doesn't
-    care. Decide during implementation.
+- [x] **Pointer substrate — Engine type, macOS wiring, MyGame demo.** Done —
+  `Engine/Sources/Engine/Input/Pointer.swift` adds a `Pointer` class
+  wrapping a `PointerState` value (next to `KeyboardState` in
+  `Input.swift`); single boolean `tappedThisFrame` edge with
+  `recordTap()` / `endFrame()`. `GameEngine` constructs and exposes it,
+  clears the edge in `update(...)` after `keyboard.endFrame()`.
+  `GameContext` gets a `pointer` field. macOS `MetalView` takes a
+  `Pointer` at construction and overrides `mouseDown(with:)` to call
+  `recordTap()`; `Host` injects `engine.pointer`. `MyGame` toggles
+  through Y → X → Z → Y on `keyboard.wasPressed(.space) ||
+  pointer.tappedThisFrame`, accumulating cube orientation as a
+  `simd_quatf` so the active axis stays world-aligned across switches.
+  **Position decision:** v1 carries no position — `tappedThisFrame: Bool`
+  matches the only consumer (the toggle) and matches Keyboard's polling
+  shape. `takeTap() -> Tap?` can fold in later when a position-aware
+  consumer surfaces; the boolean call sites won't break.
 
 - [ ] **iOS `MetalView`** — UIView equivalent of the existing macOS one.
   - `final class MetalView: UIView` with
