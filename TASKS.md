@@ -385,9 +385,14 @@ neon-grid fragment shader. Ugly-but-distinctive and playable.
 - Fixed timestep vs. variable `dt`? Variable is what the engine passes
   today, but Flappy physics is sensitive to frame-rate spikes. Might need
   a sub-stepped fixed update; see how it feels first.
-- Gate visual: two beams or full rectangular frame with a hole? Two beams
-  is simplest and reads as "Flappy pipes in 3D." Frames might read better
-  as "fly-through gates" but cost more geometry — try beams first.
+- Gate visual: two beams (top + bottom only, like Flappy pipes) or a
+  full picture-frame rectangle (all four sides, opening in the middle)?
+  Beams are simplest and read as "Flappy pipes in 3D"; a closed frame
+  reads more like "fly-through gate" but costs more geometry — try
+  beams first. Other shapes worth a look later: glowing wireframe
+  outlines (fragment-shader edge term, fits the tunnel aesthetic), a
+  circular hoop / ring (distinctive but harder mesh), or diamonds
+  (rotated rectangles, near-free variation).
 - Fade distance for the floor grid: 150 units is a guess. May need to
   tune against the chosen FOV/near/far so the horizon falloff happens at
   a visually pleasing depth, not too close (kills the rush feel) or too
