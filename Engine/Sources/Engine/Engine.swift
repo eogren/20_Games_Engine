@@ -8,10 +8,12 @@ public final class GameEngine {
     public let renderer: Renderer
     public let meshLoader: MeshLoader
     private let game: any Game
-    /// Seconds since the first `update(dt:...)` call. Pushed into the
-    /// renderer at frame start so mesh shaders can drive animation off a
-    /// single engine-owned clock instead of each game accumulating its
-    /// own. Pausing is the game's concern.
+    /// Game-time seconds — the running sum of `dt` across `update` calls.
+    /// Pushed into the renderer at frame start so mesh shaders can drive
+    /// animation off a single engine-owned clock instead of each game
+    /// accumulating its own. Game-time, not wall-clock: a slow-motion or
+    /// paused tick (smaller / zero `dt`) advances this proportionally,
+    /// so shader animation tracks the simulation.
     private var elapsed: Float = 0
 
     /// `gameLibrary` is optional during early development — a game with

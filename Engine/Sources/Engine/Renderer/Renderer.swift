@@ -59,9 +59,12 @@ public final class Renderer {
     /// renderer needing a top-level config knob.
     private var currentSampleCount: Int = 1
     private var currentDrawableSize: SIMD2<Float>?
-    /// Seconds since engine start, supplied by the host at `beginFrame`.
-    /// Folded into `MeshGlobalUniform` lazily on the first `drawMesh`
-    /// of the frame.
+    /// Game-time seconds — the host accumulates `dt` across per-tick
+    /// calls and supplies it at `beginFrame`. Game-time, not wall-clock:
+    /// if the simulation pauses or slows by passing a smaller `dt`, this
+    /// advances in lockstep, so shader animation pauses with the game.
+    /// Folded into `MeshGlobalUniform` lazily on the first `drawMesh` of
+    /// the frame.
     private var currentTime: Float = 0
     /// View-projection stashed by `setCamera`; nil until set. The lazy
     /// upload in `drawMesh` traps if it sees nil here, which is what
@@ -188,11 +191,11 @@ public final class Renderer {
     /// it wants (and switch cameras mid-frame for split-screen / PIP)
     /// without the renderer needing to know about Transform shape.
     ///
-    /// `time` is engine-side state (seconds since engine start) and the
-    /// renderer folds it into the per-frame mesh global uniform alongside
-    /// the game-supplied view-projection. Defaults to 0 for tests that
-    /// don't care about animation; production callers (`GameEngine`)
-    /// pass an accumulator.
+    /// `time` is engine-side game-time (accumulated `dt`, not wall-clock)
+    /// and the renderer folds it into the per-frame mesh global uniform
+    /// alongside the game-supplied view-projection. Defaults to 0 for
+    /// tests that don't care about animation; production callers
+    /// (`GameEngine`) pass an accumulator.
     func beginFrame(passDescriptor: MTL4RenderPassDescriptor,
                     drawable: CAMetalDrawable? = nil,
                     time: Float = 0) {

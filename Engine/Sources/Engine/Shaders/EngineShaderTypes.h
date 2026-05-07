@@ -20,9 +20,10 @@ struct MeshModelUniform {
 };
 
 /// Uniforms that are true for the entire frame for all objects.
-/// `time` is seconds since `GameEngine` was constructed — game shaders
-/// can drive animation off it without each game accumulating its own
-/// clock.
+/// `time` is game-time seconds (accumulated `dt`, not wall-clock) —
+/// game shaders can drive animation off it without each game keeping
+/// its own clock, and the value tracks the simulation through pauses
+/// or slow-motion ticks.
 struct MeshGlobalUniform {
     float4x4 viewProjectionMatrix;
     float time;
