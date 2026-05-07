@@ -11,8 +11,11 @@ import simd
 /// constant-rate spinning cube) own the scalar on their own state and
 /// rebuild `transform.rotation` from it each tick:
 ///
-///     yAngle += dt * spinRate
-///     cube.transform.rotation = .aroundY(yAngle)
+///     spinAngle += spinRate * dt
+///     cube.transform.rotation = .aroundY(spinAngle)
+///
+/// where `spinAngle` and `spinRate` are both `Angle`-typed (the rate is
+/// per-second; `Angle * Float` produces the per-tick increment).
 ///
 /// The cached `matrix` is the model matrix the renderer uploads per
 /// draw — `drawMesh(_:fragmentShader:meshTransform:)` takes a

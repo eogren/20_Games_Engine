@@ -20,7 +20,7 @@ private enum RotationAxis {
         }
     }
 
-    func rotation(_ angle: Float) -> simd_quatf {
+    func rotation(_ angle: Angle) -> simd_quatf {
         switch self {
         case .x: .aroundX(angle)
         case .y: .aroundY(angle)
@@ -30,7 +30,7 @@ private enum RotationAxis {
 }
 
 final class MyGame: Game {
-    private static let rotationSpeed: Float = 1.0  // rad/sec
+    private static let rotationSpeed = Angle.radians(1.0)  // per second
 
     private var elapsed: Float = 0
     private var cube: MTKMesh?
@@ -70,7 +70,7 @@ final class MyGame: Game {
         camera.translation = [3, 2, 4]
         camera.lookAt([0, 0, 0])
         let size = ctx.renderer.drawableSize
-        let proj = float4x4.perspective(fovY: .pi / 3, aspect: size.x / size.y, near: 0.1, far: 100)
+        let proj = float4x4.perspective(fovY: .degrees(60), aspect: size.x / size.y, near: 0.1, far: 100)
         let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
         ctx.renderer.setCamera(viewProjection: vp)
 

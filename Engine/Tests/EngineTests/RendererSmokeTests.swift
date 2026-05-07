@@ -188,7 +188,7 @@ import Testing
         var camera = Transform.identity
         camera.translation = [0, 0, 3]
         camera.lookAt([0, 0, 0])
-        let proj = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 0.1, far: 100)
+        let proj = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 0.1, far: 100)
         let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
 
         renderer.beginFrame(passDescriptor: clearPass)
@@ -268,7 +268,7 @@ import Testing
         var camera = Transform.identity
         camera.translation = [0.5, 0, 3]
         camera.lookAt([0.5, 0, 0])
-        let proj = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 0.1, far: 100)
+        let proj = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 0.1, far: 100)
         let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
 
         var meshTransform = Transform.identity
@@ -333,7 +333,7 @@ import Testing
         var camera = Transform.identity
         camera.translation = [0, 0, 3]
         camera.lookAt([0, 0, 0])
-        let proj = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 0.1, far: 100)
+        let proj = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 0.1, far: 100)
         let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
 
         var nearTransform = Transform.identity

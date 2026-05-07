@@ -24,16 +24,17 @@ extension float4x4 {
     /// or `far <= near`. All four constraints are required for a usable
     /// projection; violating them yields a singular or NaN-filled matrix.
     public static func perspective(
-        fovY: Float, aspect: Float, near: Float, far: Float
+        fovY: Angle, aspect: Float, near: Float, far: Float
     ) -> float4x4 {
-        precondition(fovY.isFinite && aspect.isFinite && near.isFinite && far.isFinite,
-            "float4x4.perspective: all inputs must be finite (fovY=\(fovY), aspect=\(aspect), near=\(near), far=\(far))")
-        precondition(fovY > 0, "float4x4.perspective: fovY must be > 0 (got \(fovY))")
+        let fovYRadians = fovY.radians
+        precondition(fovYRadians.isFinite && aspect.isFinite && near.isFinite && far.isFinite,
+            "float4x4.perspective: all inputs must be finite (fovY=\(fovYRadians)rad, aspect=\(aspect), near=\(near), far=\(far))")
+        precondition(fovYRadians > 0, "float4x4.perspective: fovY must be > 0 (got \(fovYRadians)rad)")
         precondition(aspect > 0, "float4x4.perspective: aspect must be > 0 (got \(aspect))")
         precondition(near > 0, "float4x4.perspective: near must be > 0 (got \(near))")
         precondition(far > near, "float4x4.perspective: far must be > near (near=\(near), far=\(far))")
 
-        let f = 1 / tan(fovY / 2)
+        let f = 1 / tan(fovYRadians / 2)
         let zScale = far / (near - far)        // negative; maps view -near→0, -far→1 after divide
         let zBias  = far * near / (near - far) // negative
         return float4x4(
@@ -65,19 +66,19 @@ extension simd_quatf {
     /// silent garbage. Use `.identity` for "no rotation" defaults.
     public static let identity = simd_quatf(real: 1, imag: .zero)
 
-    /// Rotation around the world X axis. Angle in radians.
-    public static func aroundX(_ angle: Float) -> simd_quatf {
-        simd_quatf(angle: angle, axis: [1, 0, 0])
+    /// Rotation around the world X axis.
+    public static func aroundX(_ angle: Angle) -> simd_quatf {
+        simd_quatf(angle: angle.radians, axis: [1, 0, 0])
     }
 
-    /// Rotation around the world Y axis. Angle in radians.
-    public static func aroundY(_ angle: Float) -> simd_quatf {
-        simd_quatf(angle: angle, axis: [0, 1, 0])
+    /// Rotation around the world Y axis.
+    public static func aroundY(_ angle: Angle) -> simd_quatf {
+        simd_quatf(angle: angle.radians, axis: [0, 1, 0])
     }
 
-    /// Rotation around the world Z axis. Angle in radians.
-    public static func aroundZ(_ angle: Float) -> simd_quatf {
-        simd_quatf(angle: angle, axis: [0, 0, 1])
+    /// Rotation around the world Z axis.
+    public static func aroundZ(_ angle: Angle) -> simd_quatf {
+        simd_quatf(angle: angle.radians, axis: [0, 0, 1])
     }
 
     /// Rotation that aims the canonical object-local forward (`-Z`, the
