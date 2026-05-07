@@ -53,3 +53,11 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM=""
+
+      # Cross-compile gate for the iOS branches in Platform / Engine.
+      # Targets generic iOS device (not Simulator): the iOS Simulator
+      # SDK does not ship MTL4 types, so the renderer can't compile
+      # against it. Real-device SDK does, and that's the deployment
+      # target anyway. Build-only — no run, no FlappyBird iOS target yet.
+      - name: Build Platform for iOS
+        run: ./Platform/build-ios.sh
