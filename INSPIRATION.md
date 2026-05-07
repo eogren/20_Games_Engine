@@ -73,6 +73,28 @@ Distance-based color gradient on the floor grid is the canonical move
   v1 (matches "Flappy pipes" mental model), possibly full frames later.
   Beams glow; passing through could pulse the glow brighter as score
   feedback.
+
+  Shape variants worth prototyping once v1 reads:
+  - **Glowing wireframe outline** (Tron-direct). Same beam/frame mesh,
+    fragment shader does an edge-distance term so only the silhouette
+    glows. Near-free geometrically; the work is in the shader. Best fit
+    for the synthwave-tunnel aesthetic — neon outlines on a black grid
+    is exactly the look.
+  - **Diamond** (rectangle rotated 45° around z). Same mesh, free
+    variation. Could alternate orientation every N gates for rhythm.
+  - **Flared / trapezoidal** (back edges wider than front). Cheap
+    perspective-amplification trick — gates appear to "open up" toward
+    you as they approach. Reads as speed.
+  - **Hoop / ring** (circular instead of rectangular). Most distinctive
+    silhouette ("fly through the hoop" — Star Fox arches). Mesh is more
+    work: real torus geometry or a flat ring quad with alpha cutout.
+
+  Frame *size* is a knob independent of shape: square reads as a neutral
+  doorway; wider-than-tall is a generous letterbox slot (matches Flappy's
+  vertical-only movement); taller-than-wide is a tense narrow gap; just
+  barely larger than the bird is Star Wars trench. Wider gates feel more
+  forgiving for the same gap-height because the eye reads the whole
+  opening as the target.
 - **Sky**: black. Optionally a stylized sun/horizon line in mid-distance
   — the "sun on the horizon" silhouette is iconic Outrun but optional.
   Stars / scanline effect on the sky can come from the post-process pass
