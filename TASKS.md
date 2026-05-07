@@ -202,13 +202,11 @@ Scope rule: same as elsewhere. Goal state is "same `MyGame` running on
 a Mac window and an iPad simulator, and the cube changes behavior when
 you tap/click/press space."
 
-- [ ] **Decide iOS entry shape.** SwiftUI `App` (modern, free scene/
-  window manager, slightly less direct lifecycle hooks) vs. classic
-  `UIApplicationDelegate` + `UIApplicationMain` (mirrors macOS `Host`
-  more literally). Lean toward SwiftUI `App` on iOS with a
-  `UIViewControllerRepresentable` wrapping `MetalView`; macOS keeps the
-  AppKit `Host`. Two entry styles is fine — both are small, and the
-  asymmetry is honest about what each OS makes natural.
+- [x] **Decide iOS entry shape.** Resolved: SwiftUI `App` on iOS with a
+  `UIViewControllerRepresentable` wrapping `Host.makeViewController()`;
+  macOS keeps the AppKit `Host.run()`. The Platform-side wiring landed
+  with the iOS `MetalView` / `Host` work below; the FlappyBird-side
+  `App.swift` swap is part of the next iOS-target PR.
 
 - [x] **Pointer substrate — Engine type, macOS wiring, MyGame demo.** Done —
   `Engine/Sources/Engine/Input/Pointer.swift` adds a `Pointer` class
@@ -227,32 +225,25 @@ you tap/click/press space."
   shape. `takeTap() -> Tap?` can fold in later when a position-aware
   consumer surfaces; the boolean call sites won't break.
 
-- [ ] **iOS `MetalView`** — UIView equivalent of the existing macOS one.
-  - `final class MetalView: UIView` with
-    `override class var layerClass: AnyClass { CAMetalLayer.self }` —
-    the view's backing layer IS the Metal layer. Cleaner than the
-    macOS `wantsLayer + makeBackingLayer` recipe.
-  - `layoutSubviews` is iOS's resize hook; `contentScaleFactor` is the
-    `backingScaleFactor` analog. Same depth-texture lifecycle as
-    macOS — if the duplication grates, extract a `DepthTextureCache`
-    helper that both views own (don't push it into Engine; it's
-    platform glue with no Engine-shaped concepts).
-  - Override `touchesBegan(_:with:)` and call `pointer.recordTap()`.
-    Single-tap-anywhere is enough for v1; multi-touch / location-aware
-    / drag substrate waits until a real consumer surfaces.
+- [x] **iOS `MetalView`** — UIView equivalent of the macOS one.
+  Done in the iOS-platform-port PR. `final class MetalView: UIView` with
+  `override class var layerClass: AnyClass { CAMetalLayer.self }` so
+  the backing layer IS the Metal layer. `layoutSubviews` and
+  `didMoveToWindow` drive `drawableSize` + `contentsScale` from
+  `traitCollection.displayScale`. `touchesBegan` calls
+  `pointer.recordTap()`. Depth-texture lifecycle is intentionally
+  duplicated across the macOS / iOS branches of the same file —
+  extract a shared helper if a third platform-glue surface appears.
 
-- [ ] **iOS `Host`** — UIKit equivalent of the macOS one.
-  - Either `#if os(iOS)` block paralleling the macOS code in the same
-    `Host.swift`, or a sibling `IOSHost.swift`. Lean toward `#if`-gated
-    single `Host` so Engine construction is shared and the divergence
-    is small and visible.
-  - `UIWindow` + a `UIViewController` whose view is the `MetalView`.
-    `windowScene` lookup via `UIApplication.shared.connectedScenes`.
-  - `CADisplayLink(target:selector:)` + `add(to: .main, forMode: .common)`
-    — same shape as macOS. `preferredFrameRateRange` and `fpsCap` work
-    identically.
-  - No menu, no Cmd-Q. Title is accepted but ignored on iOS so the
-    constructor signature stays portable.
+- [x] **iOS `Host`** — UIKit equivalent of the macOS one. Done in the
+  same PR. Single `#if`-gated `Host` class with shared init + a shared
+  `runFrame(view:link:)` that both platforms' display-link selectors
+  funnel into (so the per-frame contract evolves in one place). macOS
+  exposes `Host.run()`; iOS exposes `Host.makeViewController()` which
+  returns a private `HostViewController` owning the view + display
+  link. `engine.load()` is awaited before the display link starts on
+  both platforms. Title is accepted but ignored on iOS for portable
+  call sites.
 
 - [ ] **iOS target in the FlappyBird Xcode project.**
   - Lean toward a single multi-platform target over two separate
@@ -263,24 +254,38 @@ you tap/click/press space."
     `Host(...).run()` on macOS, SwiftUI `App` on iOS hosting
     `MetalView` via `UIViewControllerRepresentable`.
 
-- [ ] **Verify Metal 4 + simulator behavior.**
-  - The renderer preflights `device.supportsFamily(.metal4)` and traps
-    if missing. **Open empirical question:** does the iOS simulator on
-    Apple Silicon report true? If not, we either (a) accept renderer
-    tests skip on simulator and lean on real-device runs, or (b) lower
-    the renderer's family requirement (probably too costly — the
-    substrate is built around MTL4 lifecycle).
-  - Run `Engine/test.sh` against an iOS simulator destination
-    (`-destination 'platform=iOS Simulator,name=iPad Pro 13-inch'`) and
-    document which suites pass/skip. Math / Transform / UploadBuffer
-    tests are GPU-light and should pass; renderer pixel tests depend
-    on the answer above.
+- [x] **Verify Metal 4 + simulator behavior.** Resolved at the SDK
+  level, ahead of any runtime check. As of Xcode 17 / iPhoneSimulator26.4,
+  the iOS Simulator SDK ships *stub* MTL4 headers — `MTL4RenderPass.h`
+  is 17 lines on the simulator vs. 133 on the device SDK, and key
+  types we use (`MTL4RenderPassDescriptor`, `MTL4RenderPipelineDescriptor`,
+  …) are simply not declared. So Engine fails to *compile* against
+  the simulator SDK regardless of arch, and the runtime
+  `supportsFamily(.metal4)` check never gets a chance to run there.
+  Decision: the iOS path is real-device-only for now. CI cross-compiles
+  Platform with `Platform/build-ios.sh` (targets `generic/platform=iOS`,
+  arm64 device SDK); simulator-based test runs against the renderer
+  are blocked until Apple ships MTL4 in the simulator SDK.
 
-- [ ] **Smoke-test on a real iPad/iPhone.** Simulator catches build/
-  integration regressions cheaply; real device confirms the GPU path
-  actually rasterizes *and* that `touchesBegan` reaches `Pointer`
-  through the real UIKit event chain. One real-device run before
-  declaring bringup done.
+- [ ] **iOS target in the FlappyBird Xcode project.**
+  - Lean toward a single multi-platform target over two separate
+    targets. Resources (`cube.obj`, `.metal` files) shared. Verify the
+    Metal toolchain compiles game `.metal` for both destinations under
+    one target.
+  - `App.swift` becomes `#if os(macOS) … #else … #endif` — AppKit
+    `Host(...).run()` on macOS, SwiftUI `App` on iOS hosting
+    `Host.makeViewController()` via `UIViewControllerRepresentable`.
+  - **CI surface:** add an `xcodebuild build -destination 'generic/platform=iOS'`
+    step for FlappyBird (mirroring the existing macOS build step).
+    Simulator destinations are blocked by the MTL4 SDK gap above; an
+    iOS destination is build-only on CI and "deploy to a real device"
+    for actual smoke testing.
+
+- [ ] **Smoke-test on a real iPad/iPhone.** Real device is the *only*
+  path that actually rasterizes — simulator is blocked by the MTL4
+  SDK gap. Confirms both that the GPU path runs and that
+  `touchesBegan` reaches `Pointer` through the real UIKit event chain.
+  One real-device run before declaring bringup done.
 
 **Explicitly NOT in this milestone:**
 - **Multi-touch / drag / position-aware tap.** Phase 1's input demo is
@@ -291,13 +296,13 @@ you tap/click/press space."
   Phase 1 has no game state worth preserving across suspend; revisit
   in phase 2 once a running sim could break on backgrounding.
 - **iOS-specific test target.** `PlatformTests` is `#if os(macOS)`-
-  gated today; mirror that gate or add UIKit-conditional tests when
-  surface area justifies. For now, running the existing Engine suite
-  on a simulator destination is enough.
+  gated today. The simulator-MTL4 gap closes the obvious "run the
+  existing suite on a sim destination" path anyway; revisit when
+  there's a real iOS-only thing to test.
+- **Simulator-based runtime testing.** Closed by the SDK gap above
+  until Apple ships MTL4 in iPhoneSimulator.
 
 **Open questions:**
-- **iOS Simulator Metal 4 support.** First task in the milestone is
-  "verify and decide." Drives the test-coverage strategy.
 - **`Pointer` API shape:** `tappedThisFrame: Bool` vs. `takeTap() -> Tap?`
   (where `Tap` carries position). Decide during implementation; cheap
   to migrate either way at this scale.
