@@ -25,8 +25,12 @@ fragment float4 background(FullscreenVOut in [[stage_in]],
 
 // Cube fragment paired with the engine's `mesh_vertex`. Emits the
 // per-vertex UV directly into red/green so each face shows a different
-// gradient as the cube spins, making rotation visually obvious. Constant
-// blue 0.5 keeps it readable against the time-pulsing background.
-fragment float4 cube_uv(MeshVertexOut in [[stage_in]]) {
-    return float4(in.uv.x, in.uv.y, 0.5, 1.0);
+// gradient as the cube spins, making rotation visually obvious. Blue
+// pulses off the engine-supplied `MeshGlobalUniform.time` at twice the
+// background's rate so the cube and background pulses are distinguishable
+// — and the cube proves engine globals are reaching the mesh fragment.
+fragment float4 cube_uv(MeshVertexOut in [[stage_in]],
+                        constant MeshGlobalUniform& g [[buffer(1)]]) {
+    float blue = 0.5 + 0.3 * sin(g.time * 2.0);
+    return float4(in.uv.x, in.uv.y, blue, 1.0);
 }

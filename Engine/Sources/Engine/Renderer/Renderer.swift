@@ -59,6 +59,21 @@ public final class Renderer {
     /// renderer needing a top-level config knob.
     private var currentSampleCount: Int = 1
     private var currentDrawableSize: SIMD2<Float>?
+    /// Seconds since engine start, supplied by the host at `beginFrame`.
+    /// Folded into `MeshGlobalUniform` lazily on the first `drawMesh`
+    /// of the frame.
+    private var currentTime: Float = 0
+    /// View-projection stashed by `setCamera`; nil until set. The lazy
+    /// upload in `drawMesh` traps if it sees nil here, which is what
+    /// the "call setCamera before drawMesh" contract becomes.
+    private var currentViewProjection: simd_float4x4?
+    /// GPU address of the per-frame mesh global uniform once it's been
+    /// uploaded for this frame. Nil until the first `drawMesh` allocates
+    /// it from `currentTime` + `currentViewProjection`. Switching cameras
+    /// mid-frame (split-screen, PIP) sets this back to nil so the next
+    /// `drawMesh` re-uploads with the new VP — time isn't re-uploaded
+    /// redundantly because it lives on the same struct and only changes
+    /// frame-to-frame.
     private var meshGlobalUniformsAddr: MTLGPUAddress?
 
     /// Boot-time failures (no command queue, no engine metallib, etc.) are
@@ -172,8 +187,15 @@ public final class Renderer {
     /// `beginFrame` lets the game compose its view-projection however
     /// it wants (and switch cameras mid-frame for split-screen / PIP)
     /// without the renderer needing to know about Transform shape.
+    ///
+    /// `time` is engine-side state (seconds since engine start) and the
+    /// renderer folds it into the per-frame mesh global uniform alongside
+    /// the game-supplied view-projection. Defaults to 0 for tests that
+    /// don't care about animation; production callers (`GameEngine`)
+    /// pass an accumulator.
     func beginFrame(passDescriptor: MTL4RenderPassDescriptor,
-                    drawable: CAMetalDrawable? = nil) {
+                    drawable: CAMetalDrawable? = nil,
+                    time: Float = 0) {
         // Block if a previous frame is still in flight on the GPU. After
         // this returns, the upload buffer + allocator memory is safe to
         // reuse. `addCompletedHandler` on commit signals the semaphore
@@ -229,7 +251,9 @@ public final class Renderer {
         // Each frame must re-establish camera state via `setCamera`;
         // clearing here means a forgotten call traps in `drawMesh` rather
         // than silently reusing last frame's view-projection.
+        self.currentViewProjection = nil
         self.meshGlobalUniformsAddr = nil
+        self.currentTime = time
     }
 
     /// Upload a view-projection matrix and bind it as the per-frame mesh
@@ -241,8 +265,12 @@ public final class Renderer {
         guard encoder != nil else {
             fatalError("Renderer.setCamera called outside begin/endFrame")
         }
-        let uniform = MeshGlobalUniform(viewProjectionMatrix: viewProjection)
-        meshGlobalUniformsAddr = uploadBuffer.allocate(uniform)
+        // Stash only — the actual upload happens lazily on the first
+        // `drawMesh` that needs it. Invalidate any previously-uploaded
+        // global uniform so a mid-frame camera swap re-uploads with the
+        // new VP.
+        currentViewProjection = viewProjection
+        meshGlobalUniformsAddr = nil
     }
 
     /// Close the encoder, schedule presentation if a drawable was bound,
@@ -357,9 +385,22 @@ public final class Renderer {
         let vbuf = mesh.vertexBuffers.first!
         argumentTable.setAddress(vbuf.buffer.gpuAddress + UInt64(vbuf.offset), index: 0)
 
-        // Per-frame global uniforms at buffer 1
-        guard let globalUniformsAddr = meshGlobalUniformsAddr else {
-            fatalError("Renderer.drawMesh: call setCamera(viewProjection:) before drawMesh in this frame")
+        // Per-frame global uniforms at buffer 1. Allocated lazily on the
+        // first `drawMesh` after each `setCamera` so cameras can swap
+        // mid-frame without bundling time re-uploads into setCamera.
+        let globalUniformsAddr: MTLGPUAddress
+        if let cached = meshGlobalUniformsAddr {
+            globalUniformsAddr = cached
+        } else {
+            guard let viewProjection = currentViewProjection else {
+                fatalError("Renderer.drawMesh: call setCamera(viewProjection:) before drawMesh in this frame")
+            }
+            let uniform = MeshGlobalUniform(
+                viewProjectionMatrix: viewProjection,
+                time: currentTime
+            )
+            globalUniformsAddr = uploadBuffer.allocate(uniform)
+            meshGlobalUniformsAddr = globalUniformsAddr
         }
         argumentTable.setAddress(globalUniformsAddr, index: 1)
 
@@ -564,6 +605,7 @@ private struct PipelineKey: Hashable {
 /// Mirrors of the Shaders/EngineShaderTypes.h definition
 private struct MeshGlobalUniform {
     var viewProjectionMatrix: simd_float4x4
+    var time: Float
 }
 
 private struct MeshModelUniform {

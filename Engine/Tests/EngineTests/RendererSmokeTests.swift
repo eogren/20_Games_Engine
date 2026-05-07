@@ -375,4 +375,65 @@ import Testing
             #expect(center.b < 32,  "\(order): center blue should be near 0 (far lost), got b=\(center.b)")
         }
     }
+
+    /// Pins down the per-frame `time` field added to `MeshGlobalUniform`.
+    /// The engine accumulates time and pushes it into `Renderer.beginFrame`;
+    /// the renderer folds it into the global uniform buffer alongside the
+    /// view-projection. The test bypasses `GameEngine` and supplies time
+    /// directly to `beginFrame`, then renders with a fragment that emits
+    /// `time` into the red channel — readback proves the value reached
+    /// the fragment stage. Two frames at distinct times catch a stale
+    /// upload (last frame's value carrying over) that a single-frame test
+    /// would miss.
+    @Test(.enabled(if: engineMetalLibraryAvailable && metal4Supported,
+                   "skipped: needs test metallib + engine metallib in their bundles (xcodebuild test) and a Metal-4-capable GPU"))
+    @MainActor func meshGlobalTimeReachesFragment() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(),
+                                  "no Metal device — Apple Silicon hardware expected")
+        let testLibrary = try #require(
+            try? device.makeDefaultLibrary(bundle: .module),
+            "couldn't load test metallib from Bundle.module — run via xcodebuild test"
+        )
+        let renderer = Renderer(device: device, gameLibrary: testLibrary)
+
+        let quadURL = try #require(
+            Bundle.module.url(forResource: "quad", withExtension: "obj", subdirectory: "Meshes"),
+            "quad.obj missing from test bundle"
+        )
+        let loader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
+        let mesh = try await loader.loadMesh(from: quadURL)
+        renderer.register(mesh)
+
+        var camera = Transform.identity
+        camera.translation = [0, 0, 3]
+        camera.lookAt([0, 0, 0])
+        let proj = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 0.1, far: 100)
+        let vp = float4x4.viewPerspectiveMatrix(cameraTransform: camera, cameraPerspective: proj)
+
+        // Two values in [0, 1] so the fragment's clamp stays a no-op and
+        // the byte readback is exactly `round(time * 255)`. 0.25 → ~64
+        // and 0.75 → ~191; the gap is large enough that a stale-upload
+        // bug (second frame still holding 0.25) trips the second case.
+        for time in [Float(0.25), Float(0.75)] {
+            let target = try OffscreenColorTarget(device: device, width: 64, height: 64)
+            // Cyan clear so any clear-color leakage at the center is loud
+            // (the shader's encoding for these times is dark red, not cyan).
+            let clearPass = target.clearPass(MTLClearColorMake(0, 1, 1, 1))
+
+            renderer.beginFrame(passDescriptor: clearPass, time: time)
+            renderer.setCamera(viewProjection: vp)
+            renderer.drawMesh(mesh, fragmentShader: "mesh_time_red", meshTransform: .identity)
+            renderer.endFrame().waitUntilCompleted()
+
+            let pixels = target.readback()
+            let center = pixels[target.width / 2, target.height / 2]
+            let expected = UInt8(round(time * 255))
+            #expect(abs(Int(center.r) - Int(expected)) < 4,
+                    "time=\(time): center red should be ~\(expected), got \(center.r)")
+            #expect(center.g < 32,
+                    "time=\(time): center green should be near 0 (no clear leak), got \(center.g)")
+            #expect(center.b < 32,
+                    "time=\(time): center blue should be near 0 (no clear leak), got \(center.b)")
+        }
+    }
 }

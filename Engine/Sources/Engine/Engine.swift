@@ -8,6 +8,11 @@ public final class GameEngine {
     public let renderer: Renderer
     public let meshLoader: MeshLoader
     private let game: any Game
+    /// Seconds since the first `update(dt:...)` call. Pushed into the
+    /// renderer at frame start so mesh shaders can drive animation off a
+    /// single engine-owned clock instead of each game accumulating its
+    /// own. Pausing is the game's concern.
+    private var elapsed: Float = 0
 
     /// `gameLibrary` is optional during early development — a game with
     /// no `.metal` files yet has no default library. Draw calls that need
@@ -35,7 +40,8 @@ public final class GameEngine {
     /// so the game can issue draws against `ctx.renderer` immediately.
     /// Input edge clears run last so the next tick sees clean edges.
     public func update(dt: Float, drawable: CAMetalDrawable, passDescriptor: MTL4RenderPassDescriptor) {
-        renderer.beginFrame(passDescriptor: passDescriptor, drawable: drawable)
+        elapsed += dt
+        renderer.beginFrame(passDescriptor: passDescriptor, drawable: drawable, time: elapsed)
         let ctx = GameContext(keyboard: keyboard, pointer: pointer, renderer: renderer, meshLoader: meshLoader)
         game.update(ctx, dt: dt)
         renderer.endFrame()
