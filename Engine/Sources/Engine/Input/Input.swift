@@ -37,22 +37,3 @@ public struct KeyboardState: Sendable {
         released.removeAll(keepingCapacity: true)
     }
 }
-
-/// Per-frame pointer snapshot. The platform layer drives `tappedThisFrame`
-/// via `recordTap()` from its OS event hook; the game polls the boolean
-/// and `endFrame()` clears it. v1 carries no position — `mouseDown` /
-/// `touchesBegan` reduce to a single per-frame edge. Position-aware tap
-/// can fold in later (likely as `takeTap() -> Tap?`) without breaking
-/// callers that just want "did the user activate this frame."
-public struct PointerState: Sendable {
-    public private(set) var tappedThisFrame: Bool = false
-
-    public init() {}
-
-    /// Multiple taps in one frame collapse to a single edge — the game
-    /// loop polls once per tick, so finer granularity has no consumer.
-    public mutating func recordTap() { tappedThisFrame = true }
-
-    /// Call at the end of each frame to clear the edge.
-    public mutating func endFrame() { tappedThisFrame = false }
-}

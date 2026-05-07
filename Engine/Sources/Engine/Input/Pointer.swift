@@ -1,24 +1,24 @@
 /// Cross-platform pointer edge: mouse click on macOS, single tap on iOS.
 ///
-/// Shape mirrors `Keyboard` (passive sink polled by game code) but the
-/// event source diverges per OS, so Engine can't drive it directly the
-/// way `GCKeyboard` lets it for keys. The platform layer owns the
+/// Passive sink polled by game code. The platform layer owns the
 /// OS-specific event hook (`mouseDown(with:)`, `touchesBegan(_:with:)`)
 /// and feeds taps in via `recordTap()`. Engine still owns the type so
 /// games never reach into Platform.
+///
+/// v1 carries no position — `mouseDown` / `touchesBegan` reduce to a
+/// single per-frame edge. Multiple taps in one frame collapse to the
+/// same edge (game polls once per tick). Position-aware tap can fold
+/// in later (likely as `takeTap() -> Tap?`) without breaking callers
+/// that just want "did the user activate this frame."
 @MainActor
 public final class Pointer {
-    private var state = PointerState()
+    public private(set) var tappedThisFrame: Bool = false
 
     public init() {}
 
-    public var snapshot: PointerState { state }
-
-    public var tappedThisFrame: Bool { state.tappedThisFrame }
-
     /// Called by the platform layer from its OS event hook.
-    public func recordTap() { state.recordTap() }
+    public func recordTap() { tappedThisFrame = true }
 
     /// Clears the per-frame edge. Called by `GameEngine.update` at end of tick.
-    public func endFrame() { state.endFrame() }
+    public func endFrame() { tappedThisFrame = false }
 }

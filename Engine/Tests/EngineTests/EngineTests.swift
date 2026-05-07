@@ -83,38 +83,39 @@ import Testing
     }
 }
 
-@Suite struct PointerStateTests {
+@MainActor
+@Suite struct PointerTests {
     @Test func initialStateIsEmpty() {
-        let s = PointerState()
-        #expect(!s.tappedThisFrame)
+        let p = Pointer()
+        #expect(!p.tappedThisFrame)
     }
 
     @Test func recordTapSetsEdge() {
-        var s = PointerState()
-        s.recordTap()
-        #expect(s.tappedThisFrame)
+        let p = Pointer()
+        p.recordTap()
+        #expect(p.tappedThisFrame)
     }
 
     @Test func multipleTapsInSameFrameCollapseToOneEdge() {
-        var s = PointerState()
-        s.recordTap()
-        s.recordTap()
-        s.recordTap()
-        #expect(s.tappedThisFrame, "edge stays high regardless of how many taps land in a frame")
+        let p = Pointer()
+        p.recordTap()
+        p.recordTap()
+        p.recordTap()
+        #expect(p.tappedThisFrame, "edge stays high regardless of how many taps land in a frame")
     }
 
     @Test func endFrameClearsEdge() {
-        var s = PointerState()
-        s.recordTap()
-        s.endFrame()
-        #expect(!s.tappedThisFrame)
+        let p = Pointer()
+        p.recordTap()
+        p.endFrame()
+        #expect(!p.tappedThisFrame)
     }
 
     @Test func tapAfterEndFrameReSetsEdge() {
-        var s = PointerState()
-        s.recordTap()
-        s.endFrame()
-        s.recordTap()
-        #expect(s.tappedThisFrame)
+        let p = Pointer()
+        p.recordTap()
+        p.endFrame()
+        p.recordTap()
+        #expect(p.tappedThisFrame)
     }
 }
