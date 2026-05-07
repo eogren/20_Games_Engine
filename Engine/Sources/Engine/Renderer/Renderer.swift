@@ -59,24 +59,14 @@ public final class Renderer {
     /// renderer needing a top-level config knob.
     private var currentSampleCount: Int = 1
     private var currentDrawableSize: SIMD2<Float>?
-    /// Game-time seconds — the host accumulates `dt` across per-tick
-    /// calls and supplies it at `beginFrame`. Game-time, not wall-clock:
-    /// if the simulation pauses or slows by passing a smaller `dt`, this
-    /// advances in lockstep, so shader animation pauses with the game.
-    /// Folded into `MeshGlobalUniform` lazily on the first `drawMesh` of
-    /// the frame.
+    /// Game-time seconds set by `beginFrame`. See `drawMesh` for where
+    /// it's combined with `currentViewProjection` into `MeshGlobalUniform`.
     private var currentTime: Float = 0
-    /// View-projection stashed by `setCamera`; nil until set. The lazy
-    /// upload in `drawMesh` traps if it sees nil here, which is what
-    /// the "call setCamera before drawMesh" contract becomes.
+    /// View-projection stashed by `setCamera`; nil until set this frame.
     private var currentViewProjection: simd_float4x4?
-    /// GPU address of the per-frame mesh global uniform once it's been
-    /// uploaded for this frame. Nil until the first `drawMesh` allocates
-    /// it from `currentTime` + `currentViewProjection`. Switching cameras
-    /// mid-frame (split-screen, PIP) sets this back to nil so the next
-    /// `drawMesh` re-uploads with the new VP — time isn't re-uploaded
-    /// redundantly because it lives on the same struct and only changes
-    /// frame-to-frame.
+    /// GPU address of the assembled `MeshGlobalUniform` for this frame,
+    /// or nil if not yet uploaded. Cleared at frame start and on each
+    /// `setCamera` so a mid-frame camera swap re-uploads.
     private var meshGlobalUniformsAddr: MTLGPUAddress?
 
     /// Boot-time failures (no command queue, no engine metallib, etc.) are
@@ -388,9 +378,11 @@ public final class Renderer {
         let vbuf = mesh.vertexBuffers.first!
         argumentTable.setAddress(vbuf.buffer.gpuAddress + UInt64(vbuf.offset), index: 0)
 
-        // Per-frame global uniforms at buffer 1. Allocated lazily on the
+        // Per-frame global uniforms at buffer 1. Assembled lazily on the
         // first `drawMesh` after each `setCamera` so cameras can swap
-        // mid-frame without bundling time re-uploads into setCamera.
+        // mid-frame without bundling a time re-upload into setCamera.
+        // The nil-VP trap below is where the "call setCamera before
+        // drawMesh" contract is enforced.
         let globalUniformsAddr: MTLGPUAddress
         if let cached = meshGlobalUniformsAddr {
             globalUniformsAddr = cached
