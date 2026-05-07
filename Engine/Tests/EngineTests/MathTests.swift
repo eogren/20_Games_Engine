@@ -20,22 +20,22 @@ import simd
     // that convention so a sign flip in `aroundX/Y/Z` is caught.
 
     @Test func aroundYByQuarterTurnTakesPlusXToMinusZ() {
-        #expect(approx(simd_quatf.aroundY(.pi / 2).act([1, 0, 0]), [0, 0, -1]))
+        #expect(approx(simd_quatf.aroundY(.degrees(90)).act([1, 0, 0]), [0, 0, -1]))
     }
 
     @Test func aroundXByQuarterTurnTakesPlusYToPlusZ() {
-        #expect(approx(simd_quatf.aroundX(.pi / 2).act([0, 1, 0]), [0, 0, 1]))
+        #expect(approx(simd_quatf.aroundX(.degrees(90)).act([0, 1, 0]), [0, 0, 1]))
     }
 
     @Test func aroundZByQuarterTurnTakesPlusXToPlusY() {
-        #expect(approx(simd_quatf.aroundZ(.pi / 2).act([1, 0, 0]), [0, 1, 0]))
+        #expect(approx(simd_quatf.aroundZ(.degrees(90)).act([1, 0, 0]), [0, 1, 0]))
     }
 
     @Test func zeroAngleProducesIdentityRotation() {
         let v: Vec3 = [1, 2, 3]
-        #expect(approx(simd_quatf.aroundX(0).act(v), v))
-        #expect(approx(simd_quatf.aroundY(0).act(v), v))
-        #expect(approx(simd_quatf.aroundZ(0).act(v), v))
+        #expect(approx(simd_quatf.aroundX(.zero).act(v), v))
+        #expect(approx(simd_quatf.aroundY(.zero).act(v), v))
+        #expect(approx(simd_quatf.aroundZ(.zero).act(v), v))
     }
 
     @Test func lookRotationAlongMinusZIsIdentity() {
@@ -85,7 +85,7 @@ import simd
     @Test func customInitPopulatesAllFields() {
         let t = Transform(
             translation: [1, 2, 3],
-            rotation: .aroundY(.pi / 2),
+            rotation: .aroundY(.degrees(90)),
             scale: [0.5, 0.5, 0.5]
         )
         #expect(t.translation == [1, 2, 3])
@@ -137,7 +137,7 @@ import simd
 
     @Test func rotationOnlyRotatesAroundOrigin() {
         // aroundY(π/2) takes +X to -Z (validated in QuaternionExtensionTests).
-        let t = Transform(rotation: .aroundY(.pi / 2))
+        let t = Transform(rotation: .aroundY(.degrees(90)))
         #expect(approx(applyMatrix(t.matrix, to: [1, 0, 0]), [0, 0, -1]))
         #expect(approx(applyMatrix(t.matrix, to: [0, 1, 0]), [0, 1, 0]))
     }
@@ -155,7 +155,7 @@ import simd
         //   translate [10, 0, 0] → (10, 0, -2)
         let t = Transform(
             translation: [10, 0, 0],
-            rotation: .aroundY(.pi / 2),
+            rotation: .aroundY(.degrees(90)),
             scale: [2, 1, 1]
         )
         #expect(approx(applyMatrix(t.matrix, to: [1, 0, 0]), [10, 0, -2]))
@@ -170,7 +170,7 @@ import simd
 
     @Test func writingRotationRebuildsMatrix() {
         var t = Transform.identity
-        t.rotation = .aroundZ(.pi / 2)
+        t.rotation = .aroundZ(.degrees(90))
         // aroundZ(π/2) takes +X to +Y.
         #expect(approx(applyMatrix(t.matrix, to: [1, 0, 0]), [0, 1, 0]))
     }
@@ -198,13 +198,13 @@ import simd
     // sides of the frustum.
 
     @Test func pointOnNearPlaneMapsToNdcZZero() {
-        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let p = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 1, far: 100)
         let ndc = projectThenDivide(p, view: [0, 0, -1])
         #expect(abs(ndc.z - 0) < tolerance)
     }
 
     @Test func pointOnFarPlaneMapsToNdcZOne() {
-        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let p = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 1, far: 100)
         let ndc = projectThenDivide(p, view: [0, 0, -100])
         #expect(abs(ndc.z - 1) < tolerance)
     }
@@ -213,7 +213,7 @@ import simd
         // A point between near and far must produce 0 < ndc.z < 1.
         // Catches sign flips that would put it outside the unit range
         // even when the endpoints happen to land correctly.
-        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let p = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 1, far: 100)
         let ndc = projectThenDivide(p, view: [0, 0, -10])
         #expect(ndc.z > 0 && ndc.z < 1)
     }
@@ -222,7 +222,7 @@ import simd
         // Closer to the camera → smaller ndc.z. A sign error on the z
         // row would invert this and make the depth test reject the wrong
         // surfaces.
-        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+        let p = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 1, far: 100)
         let near = projectThenDivide(p, view: [0, 0, -2]).z
         let far  = projectThenDivide(p, view: [0, 0, -50]).z
         #expect(near < far)
@@ -233,7 +233,7 @@ import simd
         // at z = -near. A point at (near, 0, -near) sits on the right
         // edge and should project to ndc.x = +1.
         let near: Float = 1
-        let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: near, far: 100)
+        let p = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: near, far: 100)
         let ndc = projectThenDivide(p, view: [near, 0, -near])
         #expect(abs(ndc.x - 1) < tolerance)
         #expect(abs(ndc.y - 0) < tolerance)
@@ -245,8 +245,8 @@ import simd
         // aspect = 1. A point that hits ndc.x = 1 at aspect 1 should be
         // at ndc.x = 0.5 at aspect 2.
         let near: Float = 1
-        let pSquare = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: near, far: 100)
-        let pWide   = float4x4.perspective(fovY: .pi / 2, aspect: 2, near: near, far: 100)
+        let pSquare = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: near, far: 100)
+        let pWide   = float4x4.perspective(fovY: .degrees(90), aspect: 2, near: near, far: 100)
         let edge: SIMD4<Float> = [near, 0, -near, 1]
         let ndcSquare = perspectiveDivide(pSquare * edge)
         let ndcWide   = perspectiveDivide(pWide * edge)
@@ -259,7 +259,7 @@ import simd
         // is a divide by positive depth-from-camera. If w is built wrong
         // the perspective divide flips signs and the rasterizer culls
         // everything.
-        let p = float4x4.perspective(fovY: .pi / 3, aspect: 1.5, near: 0.1, far: 50)
+        let p = float4x4.perspective(fovY: .degrees(60), aspect: 1.5, near: 0.1, far: 50)
         let clip = p * SIMD4<Float>(0, 0, -7, 1)
         #expect(abs(clip.w - 7) < tolerance)
     }
@@ -274,7 +274,7 @@ import simd
     // for our Y-up world / -Z forward object convention, with no basis
     // swap needed.
 
-    static let p = float4x4.perspective(fovY: .pi / 2, aspect: 1, near: 1, far: 100)
+    static let p = float4x4.perspective(fovY: .degrees(90), aspect: 1, near: 1, far: 100)
 
     @Test func identityCameraEqualsBarePerspective() {
         // With camera at origin and identity rotation, the view matrix
