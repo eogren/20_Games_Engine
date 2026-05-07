@@ -61,19 +61,25 @@ public final class Host: NSObject {
         lastTimestamp = now
 
         // nextDrawable can return nil under window-server pressure or when
-        // the layer has zero size. depthTexture is nil until the first
-        // layout pass sizes it. Skip the frame in either case — the
-        // display link will fire again shortly.
+        // the layer has zero size. The MSAA color and depth attachments
+        // are nil until the first layout pass sizes them. Skip the frame
+        // in any of these cases — the display link will fire again shortly.
         guard let drawable = view.metalLayer.nextDrawable(),
-              let depthTexture = view.depthTexture else {
+              let depthTexture = view.depthTexture,
+              let msaaColor = view.msaaColorTexture else {
             return
         }
 
+        // 4× MSAA: rasterize into the multisample color, resolve into the
+        // drawable on-tile. `.multisampleResolve` (not `.storeAnd…`) —
+        // we don't want MSAA samples kept around, which lets the MSAA
+        // texture stay memoryless on Apple Silicon.
         let pass = MTL4RenderPassDescriptor()
         let color = pass.colorAttachments[0]!
-        color.texture = drawable.texture
+        color.texture = msaaColor
+        color.resolveTexture = drawable.texture
         color.loadAction = .clear
-        color.storeAction = .store
+        color.storeAction = .multisampleResolve
         color.clearColor = MTLClearColorMake(0, 0, 0, 1)
 
         let depth = pass.depthAttachment!

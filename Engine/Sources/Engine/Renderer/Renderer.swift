@@ -52,6 +52,12 @@ public final class Renderer {
     private var encoder: (any MTL4RenderCommandEncoder)?
     private var currentDrawable: CAMetalDrawable?
     private var currentColorFormat: MTLPixelFormat = .invalid
+    /// Sample count of the bound color attachment (1 = no MSAA, 4 = 4× MSAA).
+    /// PSOs must declare a matching `rasterSampleCount`, so this is part of
+    /// the PSO cache key. Read from the pass descriptor's color texture in
+    /// `beginFrame` — letting the platform decide MSAA vs not without the
+    /// renderer needing a top-level config knob.
+    private var currentSampleCount: Int = 1
     private var currentDrawableSize: SIMD2<Float>?
     private var meshGlobalUniformsAddr: MTLGPUAddress?
 
@@ -197,6 +203,7 @@ public final class Renderer {
         // it so the same fragment shader gets distinct PSOs across formats.
         let target = passDescriptor.colorAttachments[0].texture
         currentColorFormat = target?.pixelFormat ?? .invalid
+        currentSampleCount = target?.sampleCount ?? 1
         // Always-on depth: when the pass has a depth attachment, bind the
         // shared lessEqual + write-enabled state for every draw in this
         // frame. Skip the bind when there's no depth attachment so the
@@ -278,6 +285,7 @@ public final class Renderer {
         self.encoder = nil
         self.currentDrawable = nil
         self.currentColorFormat = .invalid
+        self.currentSampleCount = 1
         self.currentDrawableSize = nil
 
         return FrameCompletion(semaphore: completed)
@@ -336,7 +344,11 @@ public final class Renderer {
         guard let encoder else {
             fatalError("Renderer.drawMesh called outside begin/endFrame")
         }
-        let pso = pipelineStateForMesh(fragmentShader: fragmentShader, colorFormat: currentColorFormat)
+        let pso = pipelineStateForMesh(
+            fragmentShader: fragmentShader,
+            colorFormat: currentColorFormat,
+            sampleCount: currentSampleCount
+        )
         encoder.setRenderPipelineState(pso)
 
         // Vertex buffer at index 0. MTKMesh may pack into a parent allocation
@@ -382,7 +394,11 @@ public final class Renderer {
         guard let encoder else {
             fatalError("Renderer.drawFullscreenQuad called outside begin/endFrame")
         }
-        let pso = pipelineStateForFullscreenQuad(fragmentShader: fragmentShader, colorFormat: currentColorFormat)
+        let pso = pipelineStateForFullscreenQuad(
+            fragmentShader: fragmentShader,
+            colorFormat: currentColorFormat,
+            sampleCount: currentSampleCount
+        )
         encoder.setRenderPipelineState(pso)
 
         let address = uploadBuffer.allocate(uniforms)
@@ -398,18 +414,20 @@ public final class Renderer {
     /// fragment shader. No vertex buffer / vertex descriptor — the vertex
     /// shader synthesizes corners from `[[vertex_id]]`.
     private func pipelineStateForFullscreenQuad(
-        fragmentShader: String, colorFormat: MTLPixelFormat
+        fragmentShader: String, colorFormat: MTLPixelFormat, sampleCount: Int
     ) -> MTLRenderPipelineState {
         let key = PipelineKey(
             vertexFunction: "fullscreen_vertex",
             fragmentFunction: fragmentShader,
-            colorPixelFormat: colorFormat
+            colorPixelFormat: colorFormat,
+            sampleCount: sampleCount
         )
         return cachedPipelineState(key: key) {
             let desc = MTL4RenderPipelineDescriptor()
             desc.vertexFunctionDescriptor = libraryFn("fullscreen_vertex", in: engineLibrary)
             desc.fragmentFunctionDescriptor = libraryFn(fragmentShader, in: requireGameLibrary("drawFullscreenQuad"))
             desc.colorAttachments[0].pixelFormat = colorFormat
+            desc.rasterSampleCount = sampleCount
             return desc
         }
     }
@@ -419,12 +437,13 @@ public final class Renderer {
     /// (float2) interleaved in buffer 0, matching `MeshVertexIn` in
     /// `EngineShaderTypes.h`.
     private func pipelineStateForMesh(
-        fragmentShader: String, colorFormat: MTLPixelFormat
+        fragmentShader: String, colorFormat: MTLPixelFormat, sampleCount: Int
     ) -> MTLRenderPipelineState {
         let key = PipelineKey(
             vertexFunction: "mesh_vertex",
             fragmentFunction: fragmentShader,
-            colorPixelFormat: colorFormat
+            colorPixelFormat: colorFormat,
+            sampleCount: sampleCount
         )
         return cachedPipelineState(key: key) {
             let desc = MTL4RenderPipelineDescriptor()
@@ -432,6 +451,7 @@ public final class Renderer {
             desc.fragmentFunctionDescriptor = libraryFn(fragmentShader, in: requireGameLibrary("drawMesh"))
             desc.vertexDescriptor = Self.mtlMeshVertexDescriptor()
             desc.colorAttachments[0].pixelFormat = colorFormat
+            desc.rasterSampleCount = sampleCount
             return desc
         }
     }
@@ -526,14 +546,19 @@ public struct FrameCompletion {
     }
 }
 
-/// PSO identity: vertex + fragment + color format. Vertex function name
-/// must be in the key now that the renderer ships more than one substrate
-/// vertex shader (`fullscreen_vertex`, `mesh_vertex`) — same fragment +
-/// format with different vertex shaders is two distinct PSOs.
+/// PSO identity: vertex + fragment + color format + sample count. Vertex
+/// function name must be in the key now that the renderer ships more than
+/// one substrate vertex shader (`fullscreen_vertex`, `mesh_vertex`) — same
+/// fragment + format with different vertex shaders is two distinct PSOs.
+/// Sample count must be in the key because PSOs encode `rasterSampleCount`
+/// and that must match the bound color attachment at draw time, so 1×
+/// (e.g., test offscreen targets) and 4× (the platform's MSAA pass) need
+/// distinct PSOs.
 private struct PipelineKey: Hashable {
     let vertexFunction: String
     let fragmentFunction: String
     let colorPixelFormat: MTLPixelFormat
+    let sampleCount: Int
 }
 
 /// Mirrors of the Shaders/EngineShaderTypes.h definition
