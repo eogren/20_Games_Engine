@@ -31,6 +31,6 @@ fragment float4 background(FullscreenVOut in [[stage_in]],
 // — and the cube proves engine globals are reaching the mesh fragment.
 fragment float4 cube_uv(MeshVertexOut in [[stage_in]],
                         constant MeshGlobalUniform& g [[buffer(1)]]) {
-    float blue = 0.5 + 0.3 * sin(g.time * 2.0);
+    float blue = 0.5 + 0.3 * sin(g.time * 6.0);
     return float4(in.uv.x, in.uv.y, blue, 1.0);
 }
