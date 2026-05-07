@@ -4,6 +4,7 @@ import QuartzCore
 @MainActor
 public final class GameEngine {
     public let keyboard: Keyboard
+    public let pointer: Pointer
     public let renderer: Renderer
     public let meshLoader: MeshLoader
     private let game: any Game
@@ -13,6 +14,7 @@ public final class GameEngine {
     /// a game-side fragment shader will trap if this is nil.
     public init(device: MTLDevice, gameLibrary: MTLLibrary?, game: any Game) {
         self.keyboard = Keyboard()
+        self.pointer = Pointer()
         self.renderer = Renderer(device: device, gameLibrary: gameLibrary)
         self.meshLoader = MeshLoader(device: device, vertexDescriptor: Renderer.meshVertexDescriptor())
         self.game = game
@@ -23,7 +25,7 @@ public final class GameEngine {
     /// so games are guaranteed to see fully-populated assets in their
     /// first `update` tick.
     public func load() async throws {
-        let ctx = GameContext(keyboard: keyboard, renderer: renderer, meshLoader: meshLoader)
+        let ctx = GameContext(keyboard: keyboard, pointer: pointer, renderer: renderer, meshLoader: meshLoader)
         try await game.load(ctx)
     }
 
@@ -31,12 +33,13 @@ public final class GameEngine {
     /// refresh with the frame's drawable + render-pass descriptor. The
     /// engine brackets `game.update` with the renderer's begin/endFrame
     /// so the game can issue draws against `ctx.renderer` immediately.
-    /// `keyboard.endFrame()` runs last so the next tick sees clean edges.
+    /// Input edge clears run last so the next tick sees clean edges.
     public func update(dt: Float, drawable: CAMetalDrawable, passDescriptor: MTL4RenderPassDescriptor) {
         renderer.beginFrame(passDescriptor: passDescriptor, drawable: drawable)
-        let ctx = GameContext(keyboard: keyboard, renderer: renderer, meshLoader: meshLoader)
+        let ctx = GameContext(keyboard: keyboard, pointer: pointer, renderer: renderer, meshLoader: meshLoader)
         game.update(ctx, dt: dt)
         renderer.endFrame()
         keyboard.endFrame()
+        pointer.endFrame()
     }
 }

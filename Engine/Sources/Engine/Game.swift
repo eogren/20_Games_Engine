@@ -28,6 +28,7 @@ extension Game {
 @MainActor
 public struct GameContext {
     public let keyboard: Keyboard
+    public let pointer: Pointer
     public let renderer: Renderer
     public let meshLoader: MeshLoader
 }

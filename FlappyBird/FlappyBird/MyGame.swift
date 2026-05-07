@@ -1,5 +1,6 @@
 import Engine
 import MetalKit
+import simd
 
 /// Layout must match `BackgroundUniforms` in `Shaders.metal`. Keep the
 /// fields in the same order and use scalar `Float`s — Metal's `float`
@@ -8,9 +9,19 @@ struct BackgroundUniforms {
     var time: Float
 }
 
+private enum RotationAxis { case x, y, z }
+
 final class MyGame: Game {
+    private static let rotationSpeed: Float = 1.0  // rad/sec
+
     private var elapsed: Float = 0
     private var cube: MTKMesh?
+    private var rotationAxis: RotationAxis = .y
+    // Accumulated cube orientation. Composed in world-space each frame
+    // (newDelta * orientation) so the active axis stays world-aligned —
+    // a tap visibly switches which world axis the cube spins about,
+    // rather than smearing the spin into the cube's tilted local frame.
+    private var orientation: simd_quatf = .identity
 
     func load(_ ctx: GameContext) async throws {
         guard let url = Bundle.main.url(forResource: "cube", withExtension: "obj") else {
@@ -23,6 +34,22 @@ final class MyGame: Game {
 
     func update(_ ctx: GameContext, dt: Float) {
         elapsed += dt
+
+        if ctx.keyboard.wasPressed(.space) || ctx.pointer.tappedThisFrame {
+            rotationAxis = switch rotationAxis {
+            case .y: .x
+            case .x: .z
+            case .z: .y
+            }
+        }
+
+        let delta: simd_quatf = switch rotationAxis {
+        case .x: .aroundX(Self.rotationSpeed * dt)
+        case .y: .aroundY(Self.rotationSpeed * dt)
+        case .z: .aroundZ(Self.rotationSpeed * dt)
+        }
+        orientation = delta * orientation
+
         ctx.renderer.drawFullscreenQuad(
             fragmentShader: "background",
             uniforms: BackgroundUniforms(time: elapsed)
@@ -40,7 +67,7 @@ final class MyGame: Game {
         ctx.renderer.setCamera(viewProjection: vp)
 
         var cubeTransform = Transform.identity
-        cubeTransform.rotation = .aroundY(elapsed)
+        cubeTransform.rotation = orientation
         ctx.renderer.drawMesh(cube, fragmentShader: "cube_uv", meshTransform: cubeTransform)
     }
 }
