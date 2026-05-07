@@ -19,11 +19,157 @@ AABB sweep); the cost is paid in the renderer, which now needs perspective
 Scope rule: each phase should end with something visibly different on screen.
 If a phase doesn't, it's probably over-engineered — collapse it.
 
+**Status (2026-05-06):** Phase 1 substrate + cross-Apple iOS bringup
+closed; lighting cut, deferred to phase 3. App runs on macOS + iPad.
+Active work picks up at phase 2 below. Completed milestones (including
+the "Independent quick wins" that were the original early-stage drips)
+moved to the appendix at the bottom.
+
 ---
 
-## Independent quick wins (do anytime)
+## Phase 2 — Tunnel-runner gameplay + procedural floor grid
 
-Small fixes that don't depend on or block phase 1.
+Goal: playable tunnel-runner Flappy Bird with primitive-mesh stand-ins.
+Bird = cube, gates = paired beams, floor = single quad with procedural
+neon-grid fragment shader. Ugly-but-distinctive and playable.
+
+- [ ] **Bird entity.** Position fixed at `(0, 0, 0)` — only Y-velocity
+  moves. Gravity each tick; space (already wired through `Keyboard`) sets
+  Y-velocity to a fixed flap impulse on `pressed` edge. Visual rotation
+  tied to velocity for that Flappy "nose-dive" feel.
+
+- [ ] **Gate entity.** Two horizontal beams forming a vertical opening.
+  Naming the bounds: `halfWidth` is the half-extent along X (beams span
+  `-halfWidth` to `+halfWidth`); `gapTop` / `gapBottom` are the
+  Y-bounds of the opening the bird flies through; `ceiling` / `floor`
+  are the playfield's outer Y-bounds (gates extend out to these so the
+  bird can't flap above or fall below them). Top beam:
+  `(-halfWidth, gapTop, z)` to `(+halfWidth, ceiling, z)`. Bottom beam:
+  `(-halfWidth, floor, z)` to `(+halfWidth, gapBottom, z)`. Single z,
+  both beams move together. Built from the same cube mesh as the bird,
+  scaled.
+
+- [ ] **Gate spawner.** Spawn at fixed time interval at `z = -50`,
+  randomize `gapCenterY` within bounds, treadmill toward `z = 0` at
+  constant speed `S`. Despawn at `z >= 0`. Treadmill (rather than
+  forward-moving bird) is the right model — keeps coordinates near
+  origin, so float precision stays clean and gate cleanup is a trivial
+  cull condition.
+
+- [ ] **Procedural neon floor grid.**
+  - Single static floor quad on the `y=0` plane: ~200 units forward,
+    ~40 units wide. Two triangles, four vertices, world-space positions
+    baked into the buffer (model matrix = identity). One quad is
+    sufficient — perspective-correct interpolation handles everything,
+    subdivision would only matter for vertex displacement.
+  - Game-bundled fragment shader (`FlappyBird/Shaders/Grid.metal`) takes
+    interpolated world `(x, z)` as a varying. Computes gridline distance
+    analytically with `fract` + `fwidth` for free perspective-correct AA
+    (sharp close, soft at horizon, no mipmap shimmer).
+  - Animates with `worldZ + time * S` to fake forward motion — must use
+    the same `S` as the gate treadmill or the ground stops feeling like
+    ground.
+  - Fades intensity to zero past ~150 units of view-space depth so the
+    quad's far edge is invisible (horizon → black).
+  - Color: synthwave palette per INSPIRATION.md.
+
+- [ ] **Collision.** At the moment a gate's `z` crosses 0, sample bird
+  `(x, y)` against the gap rect. Single point-in-rect check per gate per
+  frame, no continuous AABB sweep — the perspective reframe earns this
+  simplification (the original side-scroller needed continuous overlap
+  while the pipe was in the bird's x-range; here, gates only "exist" at
+  the bird's depth for one moment). On hit: freeze sim, show "game over"
+  (camera shake or color tint is fine for v1 — no UI text yet).
+
+- [ ] **Score.** Increment when a gate's `z` crosses 0 (same boundary as
+  the collision check). Stored as int; display deferred to phase 3.
+
+- [ ] **Restart.** Space on game-over resets state.
+
+- [ ] **Camera y-lerp (optional polish).** Camera `eye.y` lerps toward
+  bird `y` at ~3-5% per frame so big bird movements drift on screen but
+  don't escape the frame. Preserves the altitude readout (because the
+  lag is visible) while preventing the bird from clipping top/bottom.
+  Skip in v1 if a fully-locked camera reads fine at the chosen FOV.
+
+**Likely-wrong assumptions to revisit:**
+- Fixed timestep vs. variable `dt`? Variable is what the engine passes
+  today, but Flappy physics is sensitive to frame-rate spikes. Might need
+  a sub-stepped fixed update; see how it feels first.
+- Gate visual: two beams (top + bottom only, like Flappy pipes) or a
+  full picture-frame rectangle (all four sides, opening in the middle)?
+  Beams are simplest and read as "Flappy pipes in 3D"; a closed frame
+  reads more like "fly-through gate" but costs more geometry — try
+  beams first. Other shapes worth a look later: glowing wireframe
+  outlines (fragment-shader edge term, fits the tunnel aesthetic), a
+  circular hoop / ring (distinctive but harder mesh), or diamonds
+  (rotated rectangles, near-free variation).
+- Fade distance for the floor grid: 150 units is a guess. May need to
+  tune against the chosen FOV/near/far so the horizon falloff happens at
+  a visually pleasing depth, not too close (kills the rush feel) or too
+  far (the quad's edge becomes visible).
+
+---
+
+## Phase 3 — Polish (extracts engine work from real pain)
+
+Only do these once phase 2 is playable and the *specific* lack hurts.
+
+- [ ] **Text rendering** for score + game-over. SDF font atlas is the usual
+  call; could also start with bitmap font baked into the app bundle. First
+  user of `float4x4.orthographic(...)` (HUD is screen-space ortho on top of
+  the perspective scene) — add the helper here, not in Phase 1.
+- [ ] **Bird mesh + gate aesthetic.** Replace cube placeholders. The
+  aesthetic per INSPIRATION.md is neon/wireframe/glow, not sprite-textured
+  — most likely path is a low-poly bird mesh shaded with the same emissive
+  glow treatment as the gates and floor grid. May still want texcoords in
+  the standard vertex layout for normal maps or detail textures (versioned
+  vertex layouts? or just bump everyone?). **Picks up the lighting work
+  deferred from phase 1**: the `lit` fragment, world-space normal
+  pass-through, and lighting uniform fields (`lightDir`, `lightColor`,
+  `ambient`, `normalMatrix`) on `StandardMesh.metal`. Lambertian vs.
+  emissive-glow is decided here, not in phase 1.
+- [ ] **CRT / synthwave post-processing.** Single fullscreen post-pass
+  after the main scene: bloom (essential for neon-on-black), scanlines,
+  chromatic aberration, optional vignette. First draw call that wants a
+  multi-pass setup (render scene to offscreen target → post-process →
+  drawable) — natural forcing function for adding intermediate render
+  targets to the substrate.
+- [ ] **Audio.** Flap, score, hit, ambient synthwave loop. New
+  `ctx.audio` service in `GameContext` — first non-render subsystem, will
+  probably surface boundary questions.
+- [ ] **Particles** on collision / gate-pass. First draw call that wants
+  instancing or a dynamic vertex buffer — good forcing function for that
+  substrate.
+
+---
+
+## Explicitly NOT in scope yet
+
+- **ECS / entity registration.** CLAUDE.md says wait for 2–3 games. Flappy
+  is game #1; keep entities as plain Swift in `MyGame`.
+- **Scene graph / retained-mode rendering.** Same reasoning. Immediate-mode
+  `drawMesh` in `update` is fine.
+- **Render graph / multi-pass.** One forward pass is enough until shadows
+  or post-processing show up.
+- **Asset loading from disk** beyond what `Bundle.main` already gives us.
+  No glTF, no custom mesh format.
+- **Material abstraction.** Shader name + uniforms struct per call is
+  verbose-but-clear; bundle into `Material` only when 3+ call sites repeat
+  the same triple.
+
+---
+
+## Appendix: completed milestones
+
+Kept for archival reference — what landed, what diverged from the
+original plan, and *why* the choices were made. New work should not
+add here; flip checkboxes in place when a phase closes and move the
+section down.
+
+### Independent quick wins (do anytime)
+
+Small fixes that didn't depend on or block phase 1.
 
 - [x] **Pass game title into `Host`.** Done — `Host.init(game:title:fpsCap:)`
   takes a `title: String = "Game"`; FlappyBird passes `"Flappy Bird"`.
@@ -50,9 +196,7 @@ Small fixes that don't depend on or block phase 1.
   plan assumed sync loading inside `update`, which doesn't fit `MeshLoader`'s
   async shape — needed a separate one-shot phase.
 
----
-
-## Phase 1 — 3D substrate (engine + platform)
+### Phase 1 — 3D substrate (engine + platform)
 
 Goal: keep the fullscreen quad as a background and draw a lit, tilted,
 depth-tested cube *on top* of it. Two distinct render paths coexisting in
@@ -171,9 +315,7 @@ lighting if the bare cube reads as too flat against the procedural floor.
   Probably yes; it's render substrate, not game state.~~ Resolved —
   `Engine/Sources/Engine/Renderer/MeshLoader.swift`.
 
----
-
-## Cross-Apple bringup — iOS port + tap input
+### Cross-Apple bringup — iOS port + tap input
 
 Goal: same `MyGame` runs on macOS and iPad/iPhone, and the cube reacts to
 a tap (iOS) or click/space-bar (macOS) by swapping which axis it spins
@@ -303,126 +445,3 @@ you tap/click/press space."
   Verify on first build.
 - **Multi-platform target vs. two targets.** Multi-platform is the
   modern default; only split if the build settings actually diverge.
-
----
-
-## Phase 2 — Tunnel-runner gameplay + procedural floor grid
-
-Goal: playable tunnel-runner Flappy Bird with primitive-mesh stand-ins.
-Bird = cube, gates = paired beams, floor = single quad with procedural
-neon-grid fragment shader. Ugly-but-distinctive and playable.
-
-- [ ] **Bird entity.** Position fixed at `(0, 0, 0)` — only Y-velocity
-  moves. Gravity each tick; space (already wired through `Keyboard`) sets
-  Y-velocity to a fixed flap impulse on `pressed` edge. Visual rotation
-  tied to velocity for that Flappy "nose-dive" feel.
-
-- [ ] **Gate entity.** Two horizontal beams forming a vertical opening:
-  top beam from `(-W, gapTop, z)` to `(+W, ceiling, z)`, bottom beam from
-  `(-W, floor, z)` to `(+W, gapBottom, z)`. Single z, both beams move
-  together. Built from the same cube mesh as the bird, scaled.
-
-- [ ] **Gate spawner.** Spawn at fixed time interval at `z = -50`,
-  randomize `gapCenterY` within bounds, treadmill toward `z = 0` at
-  constant speed `S`. Despawn at `z >= 0`. Treadmill (rather than
-  forward-moving bird) is the right model — keeps coordinates near
-  origin, so float precision stays clean and gate cleanup is a trivial
-  cull condition.
-
-- [ ] **Procedural neon floor grid.**
-  - Single static floor quad on the `y=0` plane: ~200 units forward,
-    ~40 units wide. Two triangles, four vertices, world-space positions
-    baked into the buffer (model matrix = identity). One quad is
-    sufficient — perspective-correct interpolation handles everything,
-    subdivision would only matter for vertex displacement.
-  - Game-bundled fragment shader (`FlappyBird/Shaders/Grid.metal`) takes
-    interpolated world `(x, z)` as a varying. Computes gridline distance
-    analytically with `fract` + `fwidth` for free perspective-correct AA
-    (sharp close, soft at horizon, no mipmap shimmer).
-  - Animates with `worldZ + time * S` to fake forward motion — must use
-    the same `S` as the gate treadmill or the ground stops feeling like
-    ground.
-  - Fades intensity to zero past ~150 units of view-space depth so the
-    quad's far edge is invisible (horizon → black).
-  - Color: synthwave palette per INSPIRATION.md.
-
-- [ ] **Collision.** At the moment a gate's `z` crosses 0, sample bird
-  `(x, y)` against the gap rect. Single point-in-rect check per gate per
-  frame, no continuous AABB sweep — the perspective reframe earns this
-  simplification (the original side-scroller needed continuous overlap
-  while the pipe was in the bird's x-range; here, gates only "exist" at
-  the bird's depth for one moment). On hit: freeze sim, show "game over"
-  (camera shake or color tint is fine for v1 — no UI text yet).
-
-- [ ] **Score.** Increment when a gate's `z` crosses 0 (same boundary as
-  the collision check). Stored as int; display deferred to phase 3.
-
-- [ ] **Restart.** Space on game-over resets state.
-
-- [ ] **Camera y-lerp (optional polish).** Camera `eye.y` lerps toward
-  bird `y` at ~3-5% per frame so big bird movements drift on screen but
-  don't escape the frame. Preserves the altitude readout (because the
-  lag is visible) while preventing the bird from clipping top/bottom.
-  Skip in v1 if a fully-locked camera reads fine at the chosen FOV.
-
-**Likely-wrong assumptions to revisit:**
-- Fixed timestep vs. variable `dt`? Variable is what the engine passes
-  today, but Flappy physics is sensitive to frame-rate spikes. Might need
-  a sub-stepped fixed update; see how it feels first.
-- Gate visual: two beams (top + bottom only, like Flappy pipes) or a
-  full picture-frame rectangle (all four sides, opening in the middle)?
-  Beams are simplest and read as "Flappy pipes in 3D"; a closed frame
-  reads more like "fly-through gate" but costs more geometry — try
-  beams first. Other shapes worth a look later: glowing wireframe
-  outlines (fragment-shader edge term, fits the tunnel aesthetic), a
-  circular hoop / ring (distinctive but harder mesh), or diamonds
-  (rotated rectangles, near-free variation).
-- Fade distance for the floor grid: 150 units is a guess. May need to
-  tune against the chosen FOV/near/far so the horizon falloff happens at
-  a visually pleasing depth, not too close (kills the rush feel) or too
-  far (the quad's edge becomes visible).
-
----
-
-## Phase 3 — Polish (extracts engine work from real pain)
-
-Only do these once phase 2 is playable and the *specific* lack hurts.
-
-- [ ] **Text rendering** for score + game-over. SDF font atlas is the usual
-  call; could also start with bitmap font baked into the app bundle. First
-  user of `float4x4.orthographic(...)` (HUD is screen-space ortho on top of
-  the perspective scene) — add the helper here, not in Phase 1.
-- [ ] **Bird mesh + gate aesthetic.** Replace cube placeholders. The
-  aesthetic per INSPIRATION.md is neon/wireframe/glow, not sprite-textured
-  — most likely path is a low-poly bird mesh shaded with the same emissive
-  glow treatment as the gates and floor grid. May still want texcoords in
-  the standard vertex layout for normal maps or detail textures (versioned
-  vertex layouts? or just bump everyone?).
-- [ ] **CRT / synthwave post-processing.** Single fullscreen post-pass
-  after the main scene: bloom (essential for neon-on-black), scanlines,
-  chromatic aberration, optional vignette. First draw call that wants a
-  multi-pass setup (render scene to offscreen target → post-process →
-  drawable) — natural forcing function for adding intermediate render
-  targets to the substrate.
-- [ ] **Audio.** Flap, score, hit, ambient synthwave loop. New
-  `ctx.audio` service in `GameContext` — first non-render subsystem, will
-  probably surface boundary questions.
-- [ ] **Particles** on collision / gate-pass. First draw call that wants
-  instancing or a dynamic vertex buffer — good forcing function for that
-  substrate.
-
----
-
-## Explicitly NOT in scope yet
-
-- **ECS / entity registration.** CLAUDE.md says wait for 2–3 games. Flappy
-  is game #1; keep entities as plain Swift in `MyGame`.
-- **Scene graph / retained-mode rendering.** Same reasoning. Immediate-mode
-  `drawMesh` in `update` is fine.
-- **Render graph / multi-pass.** One forward pass is enough until shadows
-  or post-processing show up.
-- **Asset loading from disk** beyond what `Bundle.main` already gives us.
-  No glTF, no custom mesh format.
-- **Material abstraction.** Shader name + uniforms struct per call is
-  verbose-but-clear; bundle into `Material` only when 3+ call sites repeat
-  the same triple.
