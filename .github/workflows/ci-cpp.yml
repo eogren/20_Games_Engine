@@ -1,0 +1,35 @@
+name: CI (C++)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cpp/**'
+      - '.github/workflows/ci-cpp.yml'
+  pull_request:
+    paths:
+      - 'cpp/**'
+      - '.github/workflows/ci-cpp.yml'
+
+jobs:
+  build:
+    name: Build Pong (macOS)
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Show toolchain versions
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      # cpp/ — parallel CMake-driven Pong project. PONG_TEAM_ID is
+      # unset in CI, which makes build.sh skip signing automatically.
+      - name: Build Pong (macOS)
+        run: ./cpp/build.sh
+
+      # iOS gate intentionally omitted: the cpp/ skeleton is macOS-only
+      # today (PongApplication.mm uses AppKit, main.mm has no
+      # UIApplicationMain). Re-enable build_ios.sh here when an iOS
+      # implementation lands.

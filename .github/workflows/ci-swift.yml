@@ -1,13 +1,19 @@
-name: CI
+name: CI (Swift)
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'swift/**'
+      - '.github/workflows/ci-swift.yml'
   pull_request:
+    paths:
+      - 'swift/**'
+      - '.github/workflows/ci-swift.yml'
 
 jobs:
   build-and-test:
-    name: Build & Test (macOS)
+    name: Build & Test (Swift, macOS)
     runs-on: macos-26
 
     steps:
@@ -20,11 +26,11 @@ jobs:
           swift --version
 
       - name: Test Engine
-        working-directory: Engine
+        working-directory: swift/Engine
         run: swift test
 
       - name: Test Platform
-        working-directory: Platform
+        working-directory: swift/Platform
         run: swift test
 
       # Engine is tested twice: `swift test` covers pure-logic tests, but
@@ -32,7 +38,7 @@ jobs:
       # tests need an Xcode-driven build to compile shaders. test.sh is
       # the canonical entry point so CI and local stay in sync.
       - name: Test Engine renderer (xcodebuild)
-        run: ./Engine/test.sh
+        run: ./swift/Engine/test.sh
 
       # Build-only on CI: the GHA macos-26 runner is a virtualized GPU
       # without Metal 4 support, so launching the FlappyBird app (what
@@ -41,7 +47,7 @@ jobs:
       # empty today, so we lose no test coverage; revisit if real
       # FlappyBird-side tests appear AND CI moves to real hardware.
       - name: Build FlappyBird
-        working-directory: FlappyBird
+        working-directory: swift/FlappyBird
         run: |
           set -o pipefail
           xcodebuild build \
@@ -60,14 +66,14 @@ jobs:
       # against it. Real-device SDK does, and that's the deployment
       # target anyway. Build-only — no run.
       - name: Build Platform for iOS
-        run: ./Platform/build-ios.sh
+        run: ./swift/Platform/build-ios.sh
 
       # Build-only iOS gate for FlappyBird itself. Same reasoning as
       # above (real-device SDK, not Simulator). Catches game-side
       # regressions in App.swift / .metal compilation before they
       # reach a device.
       - name: Build FlappyBird for iOS
-        working-directory: FlappyBird
+        working-directory: swift/FlappyBird
         run: |
           set -o pipefail
           xcodebuild build \
