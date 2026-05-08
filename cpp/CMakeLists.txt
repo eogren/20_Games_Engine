@@ -43,6 +43,10 @@ add_executable(Pong MACOSX_BUNDLE
     src/PongApplication.h
 )
 
+target_include_directories(Pong PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/metal-cpp
+)
+
 target_link_libraries(Pong PRIVATE
     ${METAL_FRAMEWORK}
     ${QUARTZCORE_FRAMEWORK}
