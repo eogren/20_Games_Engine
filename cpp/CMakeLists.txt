@@ -7,13 +7,10 @@ cmake_minimum_required(VERSION 3.28)
 
 project(Pong LANGUAGES CXX OBJCXX)
 
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-std=c++26" PONG_HAS_CXX26)
-if(PONG_HAS_CXX26)
-    set(CMAKE_CXX_STANDARD 26)
-else()
-    set(CMAKE_CXX_STANDARD 23)
-endif()
+# C++23, not 26: the 26.2 SDK headers on the GHA macos-26 runner emit
+# enum-enum arithmetic errors under -std=c++26 (CGImage.h, ColorSyncDeprecated.h).
+# Apple fixed those headers in 26.4; revisit when the runner image catches up.
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
