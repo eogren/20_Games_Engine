@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    name: Build Pong (macOS + iOS)
+    name: Build Pong (macOS)
     runs-on: macos-26
 
     steps:
@@ -25,14 +25,11 @@ jobs:
           xcodebuild -version
 
       # cpp/ — parallel CMake-driven Pong project. PONG_TEAM_ID is
-      # unset in CI, which makes build.sh / build_ios.sh skip signing
-      # automatically.
+      # unset in CI, which makes build.sh skip signing automatically.
       - name: Build Pong (macOS)
         run: ./cpp/build.sh
 
-      # iOS device, not Simulator: same Metal 4 SDK constraint that
-      # applies to the Swift side.
-      - name: Build Pong for iOS
-        env:
-          IOS_SDK: iphoneos
-        run: ./cpp/build_ios.sh
+      # iOS gate intentionally omitted: the cpp/ skeleton is macOS-only
+      # today (PongApplication.mm uses AppKit, main.mm has no
+      # UIApplicationMain). Re-enable build_ios.sh here when an iOS
+      # implementation lands.
