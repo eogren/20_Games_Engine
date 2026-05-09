@@ -275,8 +275,7 @@ void Renderer::endFrame()
     blit_encoder->barrierAfterQueueStages(MTL::StageFragment, MTL::StageFragment, MTL4::VisibilityOptionDevice);
     blit_encoder->setRenderPipelineState(blit_pipeline_.get());
     blit_encoder->setArgumentTable(argument_table_.get(), MTL::RenderStageFragment);
-    blit_encoder->setViewport(
-        viewport(current_drawable_->texture()->width(), current_drawable_->texture()->height()));
+    blit_encoder->setViewport(viewport(current_drawable_->texture()->width(), current_drawable_->texture()->height()));
     blit_encoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(3));
     blit_encoder->endEncoding();
 
