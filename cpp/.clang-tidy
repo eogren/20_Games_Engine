@@ -1,0 +1,39 @@
+# Curated starter ruleset. Deliberately narrow:
+#   - bugprone-*       : real-bug catchers
+#   - performance-*    : low-noise wins (move/copy, string ops)
+#   - clang-analyzer-* : path-sensitive checks
+#   - a few cppcoreguidelines / modernize must-haves
+#
+# Disabled on purpose:
+#   - bugprone-easily-swappable-parameters   : famously noisy on Cocoa-style APIs
+#   - bugprone-narrowing-conversions         : duplicates cppcoreguidelines version
+#   - bugprone-exception-escape              : trips on main()/NSApplicationMain
+#   - cppcoreguidelines-narrowing-conversions: CGFloat<->double conversions are unavoidable in Cocoa code
+#
+# Run `cpp/lint.sh` to invoke. Re-enable a check by removing the `-` prefix.
+
+Checks: >
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-init-variables,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-exception-escape,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -clang-analyzer-optin.osx.cocoa.localizability.NonLocalizedStringChecker
+
+# Local and CI alike fail on any reported diagnostic. Filter noisy checks in
+# Checks: above rather than letting warnings pile up.
+WarningsAsErrors: '*'
+
+# Only diagnose headers under cpp/src/. Skips system headers and metal-cpp.
+HeaderFilterRegex: 'cpp/src/'
+
+FormatStyle: file

@@ -14,6 +14,10 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Emit compile_commands.json so clang-tidy (cpp/lint.sh) can find compile flags.
+# Xcode generator ignores this; cpp/lint.sh configures a side Ninja build dir.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Metal 4 ships in macOS 26 / iOS 26.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "" FORCE)
 if(NOT CMAKE_OSX_SYSROOT OR CMAKE_OSX_SYSROOT STREQUAL "macosx")
@@ -39,8 +43,47 @@ find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
 
 add_executable(Pong MACOSX_BUNDLE
     src/main.mm
+    src/Pong.cpp
+    src/Pong.h
     src/PongApplication.mm
     src/PongApplication.h
+    src/Platform.mm
+)
+
+# Metal shaders: compile src/Pong.metal -> default.metallib and embed in
+# the bundle's Resources, where Device::newDefaultLibrary() finds it.
+#
+# CMake's Xcode generator recognizes .metal as a source type but doesn't
+# wire it into the Sources build phase, and there's no MTL language for
+# Ninja either. Driving xcrun metal / metallib via custom commands is the
+# portable path. Custom commands only fire on a real build, so the lint
+# side-build (configure-only Ninja for compile_commands.json) is unaffected.
+set(_pong_metal_src ${CMAKE_CURRENT_SOURCE_DIR}/src/Pong.metal)
+set(_pong_air       ${CMAKE_CURRENT_BINARY_DIR}/Pong.air)
+set(_pong_metallib  ${CMAKE_CURRENT_BINARY_DIR}/default.metallib)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(_pong_metal_sdk iphoneos)
+else()
+    set(_pong_metal_sdk macosx)
+endif()
+add_custom_command(
+    OUTPUT  ${_pong_air}
+    COMMAND xcrun -sdk ${_pong_metal_sdk} metal -c ${_pong_metal_src} -o ${_pong_air}
+    DEPENDS ${_pong_metal_src}
+    COMMENT "metal -c Pong.metal"
+    VERBATIM
+)
+add_custom_command(
+    OUTPUT  ${_pong_metallib}
+    COMMAND xcrun -sdk ${_pong_metal_sdk} metallib ${_pong_air} -o ${_pong_metallib}
+    DEPENDS ${_pong_air}
+    COMMENT "metallib -> default.metallib"
+    VERBATIM
+)
+target_sources(Pong PRIVATE ${_pong_metallib})
+set_source_files_properties(${_pong_metallib} PROPERTIES
+    GENERATED TRUE
+    MACOSX_PACKAGE_LOCATION Resources
 )
 
 target_include_directories(Pong PRIVATE
@@ -53,12 +96,27 @@ target_link_libraries(Pong PRIVATE
     ${FOUNDATION_FRAMEWORK}
 )
 
+# Enable ARC for Objective-C++ sources under all generators.
+# Xcode also reads XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC below, but Ninja
+# (used by cpp/lint.sh) needs the explicit -fobjc-arc compile flag.
+#
+# -fblocks lets C++ sources use Apple block syntax (^{ ... }) — needed for
+# metal-cpp callbacks (e.g. CommandBuffer::addCompletedHandler) that take
+# blocks. ObjC/ObjC++ has blocks on by default, so the flag is only needed
+# for CXX, but applying to OBJCXX too is harmless and keeps things uniform.
+target_compile_options(Pong PRIVATE
+    $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+    $<$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:OBJCXX>>:-fblocks>
+)
+
 set_target_properties(Pong PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME           "Pong"
     MACOSX_BUNDLE_GUI_IDENTIFIER        "${PONG_BUNDLE_ID}"
     MACOSX_BUNDLE_BUNDLE_VERSION        "1"
     MACOSX_BUNDLE_SHORT_VERSION_STRING  "0.1"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PONG_BUNDLE_ID}"
+    XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+    XCODE_ATTRIBUTE_INFOPLIST_KEY_MetalCaptureEnabled YES
 )
 
 if(PONG_TEAM_ID)
@@ -78,4 +136,38 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 else()
     find_library(APPKIT_FRAMEWORK AppKit REQUIRED)
     target_link_libraries(Pong PRIVATE ${APPKIT_FRAMEWORK})
+endif()
+
+# Opt-in sanitizers. Use a separate build dir so toggles don't fight cache:
+#   cmake -G Xcode -B build/asan  -DPONG_SANITIZE=address
+#   cmake -G Ninja -B build/ubsan -DPONG_SANITIZE=undefined
+#   cmake -G Xcode -B build/san   -DPONG_SANITIZE=address,undefined
+# LSan (leak detection) does not work on Apple Silicon; ASan still catches
+# use-after-free, OOB, double-free.
+set(PONG_SANITIZE "" CACHE STRING "Sanitizers to enable: address, undefined, or address,undefined. Empty = off.")
+
+if(PONG_SANITIZE)
+    string(REPLACE "," ";" _pong_san_list "${PONG_SANITIZE}")
+    foreach(_san IN LISTS _pong_san_list)
+        if(NOT _san MATCHES "^(address|undefined)$")
+            message(FATAL_ERROR "PONG_SANITIZE: unknown sanitizer '${_san}' (supported: address, undefined)")
+        endif()
+    endforeach()
+
+    if(CMAKE_GENERATOR STREQUAL "Xcode")
+        # Xcode build settings — applied per-target. The plain compile flags
+        # below would also work under Xcode, but using the dedicated build
+        # settings keeps the scheme's "Diagnostics" tab consistent.
+        if("address" IN_LIST _pong_san_list)
+            set_target_properties(Pong PROPERTIES XCODE_ATTRIBUTE_ENABLE_ADDRESS_SANITIZER YES)
+        endif()
+        if("undefined" IN_LIST _pong_san_list)
+            set_target_properties(Pong PROPERTIES XCODE_ATTRIBUTE_ENABLE_UNDEFINED_BEHAVIOR_SANITIZER YES)
+        endif()
+    else()
+        target_compile_options(Pong PRIVATE -fsanitize=${PONG_SANITIZE} -fno-omit-frame-pointer)
+        target_link_options(Pong PRIVATE -fsanitize=${PONG_SANITIZE})
+    endif()
+
+    message(STATUS "Pong: sanitizers enabled — ${PONG_SANITIZE}")
 endif()
