@@ -33,3 +33,31 @@ jobs:
       # today (PongApplication.mm uses AppKit, main.mm has no
       # UIApplicationMain). Re-enable build_ios.sh here when an iOS
       # implementation lands.
+
+  lint:
+    name: Lint (clang-format + clang-tidy)
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Install Homebrew LLVM (provides clang-format and clang-tidy) and
+      # Ninja. cpp/lint.sh uses a Ninja side-build to emit
+      # compile_commands.json, which Xcode-generated projects don't produce.
+      - name: Install lint tooling
+        run: |
+          brew install llvm ninja
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      - name: Show tool versions
+        run: |
+          clang-format --version
+          clang-tidy --version
+          ninja --version
+          cmake --version
+
+      - name: clang-format check
+        run: ./cpp/format.sh
+
+      - name: clang-tidy
+        run: ./cpp/lint.sh

@@ -14,7 +14,7 @@ static void createApplicationMenu(NSApplication* app)
 {
     app.mainMenu = [[NSMenu alloc] init];
 
-    NSString* bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+    NSString* bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"] ?: @"Pong";
 
     // Create about menu
     NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@""];
@@ -26,9 +26,7 @@ static void createApplicationMenu(NSApplication* app)
 
     [appMenu addItem:[NSMenuItem separatorItem]];
 
-    [appMenu addItemWithTitle:[@"Hide " stringByAppendingString:bundleName]
-                       action:@selector(hide:)
-                keyEquivalent:@"h"];
+    [appMenu addItemWithTitle:[@"Hide " stringByAppendingString:bundleName] action:@selector(hide:) keyEquivalent:@"h"];
 
     NSMenuItem* hide_other_item = [appMenu addItemWithTitle:@"Hide Others"
                                                      action:@selector(hideOtherApplications:)
@@ -60,14 +58,14 @@ static void createApplicationMenu(NSApplication* app)
     app.windowsMenu = windowsMenu;
 }
 
-int main(int argc, const char * argv[])
+int main(int argc, const char* argv[])
 {
     NSApplication* application = [NSApplication sharedApplication];
     createApplicationMenu(application);
 
     // Set up the application and window delegate:
     PongApplication* gameApplication = [[PongApplication alloc] init];
-    application.delegate             = gameApplication;
+    application.delegate = gameApplication;
 
     // Yield the game loop to the `NSApplication`, which calls
     // application:didFinishLaunchingWithOptions: from the application delegate
