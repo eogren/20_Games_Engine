@@ -2,9 +2,10 @@
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
-#include <dispatch/dispatch.h>
 
 #include <array>
+
+#include "Semaphore.h"
 
 // Pixel format the CAMetalLayer / drawable presents at. Source of truth —
 // PongApplication's layer setup and the Renderer's blit pipeline both read
@@ -12,34 +13,6 @@
 // PongApplication can cast:
 //     _metalLayer.pixelFormat = (MTLPixelFormat)DRAWABLE_PIXEL_FORMAT;
 inline constexpr MTL::PixelFormat DRAWABLE_PIXEL_FORMAT = MTL::PixelFormatBGRA8Unorm;
-
-// Owns a dispatch_semaphore_t. Destructor is out-of-line because dispatch_release
-// is unavailable under OS_OBJECT_USE_OBJC=1 (i.e. ARC-enabled .mm translation
-// units). Keeping ~Semaphore in Renderer.cpp confines the release call to a
-// pure-C++ TU where OS_OBJECT_USE_OBJC=0.
-class Semaphore
-{
-public:
-    explicit Semaphore(long initialValue);
-    ~Semaphore();
-
-    Semaphore(const Semaphore&) = delete;
-    Semaphore& operator=(const Semaphore&) = delete;
-    Semaphore(Semaphore&&) = delete;
-    Semaphore& operator=(Semaphore&&) = delete;
-
-    void wait()
-    {
-        dispatch_semaphore_wait(handle_, DISPATCH_TIME_FOREVER);
-    }
-    void signal()
-    {
-        dispatch_semaphore_signal(handle_);
-    }
-
-private:
-    dispatch_semaphore_t handle_;
-};
 
 // Fixed-function 2D renderer for the Pong-style retro path: clears a small
 // offscreen color target, then upscales (nearest) to the drawable. Substrate

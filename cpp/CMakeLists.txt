@@ -51,6 +51,8 @@ add_executable(Pong MACOSX_BUNDLE
     src/Platform.mm
     src/Renderer.cpp
     src/Renderer.h
+    src/Semaphore.cpp
+    src/Semaphore.h
 )
 
 # Metal shaders: compile src/Pong.metal -> default.metallib and embed in
