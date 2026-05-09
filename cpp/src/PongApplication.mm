@@ -4,6 +4,7 @@
 #import <QuartzCore/CAMetalDisplayLink.h>
 #include <memory>
 #include "Pong.h"
+#include "Renderer.h"
 
 @interface GameWindow : NSWindow
 @end
