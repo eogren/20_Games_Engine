@@ -86,7 +86,12 @@ set_source_files_properties(${_pong_metallib} PROPERTIES
     MACOSX_PACKAGE_LOCATION Resources
 )
 
-target_include_directories(Pong PRIVATE
+# SYSTEM so clang-tidy / clang-analyzer don't flag third-party diagnostics.
+# metal-cpp's NSSharedPtr destructor calls release() unconditionally on a
+# possibly-null receiver — safe under ObjC ([nil release] is a no-op) and
+# already guarded with __attribute__((no_sanitize("undefined"))), but the
+# analyzer can't see that. SYSTEM treats the headers as opaque.
+target_include_directories(Pong SYSTEM PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/metal-cpp
 )
 

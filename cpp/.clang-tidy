@@ -8,6 +8,15 @@
 #   - bugprone-easily-swappable-parameters   : famously noisy on Cocoa-style APIs
 #   - bugprone-narrowing-conversions         : duplicates cppcoreguidelines version
 #   - bugprone-exception-escape              : trips on main()/NSApplicationMain
+#   - bugprone-throwing-static-initialization: metal-cpp doesn't mark constructors
+#     noexcept, so any static of an MTL::* type trips the check (e.g. CLEAR_COLOR_*).
+#     The constructors are trivial (4 doubles); can't actually throw.
+#   - clang-analyzer-core.CallAndMessage     : metal-cpp's NS::SharedPtr destructor
+#     calls release() unconditionally on a possibly-null receiver — safe under ObjC
+#     (`[nil release]` is a no-op, and the dtor is __attribute__((no_sanitize("undefined")))),
+#     but the analyzer can't see that and flags every move-out-of SharedPtr. The check
+#     reports at the analysis path's origin, so SYSTEM include suppression doesn't help.
+#     Real null-receiver bugs in user code are still caught by clang-analyzer-core.NullDereference.
 #   - cppcoreguidelines-narrowing-conversions: CGFloat<->double conversions are unavoidable in Cocoa code
 #
 # Run `cpp/lint.sh` to invoke. Re-enable a check by removing the `-` prefix.
@@ -27,6 +36,8 @@ Checks: >
   -bugprone-narrowing-conversions,
   -bugprone-exception-escape,
   -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-throwing-static-initialization,
+  -clang-analyzer-core.CallAndMessage,
   -clang-analyzer-optin.osx.cocoa.localizability.NonLocalizedStringChecker
 
 # Local and CI alike fail on any reported diagnostic. Filter noisy checks in

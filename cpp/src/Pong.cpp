@@ -174,15 +174,8 @@ namespace
     }
     MTL::Viewport viewport(NS::UInteger width, NS::UInteger height)
     {
-        // Configure the viewport with the size of the drawable region.
-        MTL::Viewport viewPort;
-        viewPort.originX = 0.0;
-        viewPort.originY = 0.0;
-        viewPort.znear = 0.0;
-        viewPort.zfar = 1.0;
-        viewPort.width = (double)width;
-        viewPort.height = (double)height;
-        return viewPort;
+        // {originX, originY, width, height, znear, zfar}
+        return {0.0, 0.0, (double)width, (double)height, 0.0, 1.0};
     }
 } // namespace
 
