@@ -43,6 +43,7 @@ find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
 
 add_executable(Pong MACOSX_BUNDLE
     src/main.mm
+    src/math/Math.h
     src/Pong.cpp
     src/Pong.h
     src/PongApplication.mm
@@ -151,6 +152,32 @@ endif()
 # use-after-free, OOB, double-free.
 set(PONG_SANITIZE "" CACHE STRING "Sanitizers to enable: address, undefined, or address,undefined. Empty = off.")
 
+# Tests. doctest is vendored single-header at third_party/doctest/doctest.h.
+# PongTests is a plain CLI executable (no MACOSX_BUNDLE, no Metal/AppKit deps)
+# so the math/test surface stays light. Run with:  cd cpp && ./test.sh
+enable_testing()
+
+add_executable(PongTests
+    tests/MathTests.cpp
+)
+
+target_include_directories(PongTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+# SYSTEM keeps doctest's own diagnostics out of clang-tidy's view, mirroring
+# how metal-cpp is included in the main target.
+target_include_directories(PongTests SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+
+# doctest's own headers trip a few warnings under modern clang/c++23. They're
+# third-party code we don't want to patch — silence at the test target only.
+target_compile_options(PongTests PRIVATE
+    -Wno-deprecated-declarations
+)
+
+add_test(NAME MathTests COMMAND PongTests)
+
 if(PONG_SANITIZE)
     string(REPLACE "," ";" _pong_san_list "${PONG_SANITIZE}")
     foreach(_san IN LISTS _pong_san_list)
@@ -164,14 +191,16 @@ if(PONG_SANITIZE)
         # below would also work under Xcode, but using the dedicated build
         # settings keeps the scheme's "Diagnostics" tab consistent.
         if("address" IN_LIST _pong_san_list)
-            set_target_properties(Pong PROPERTIES XCODE_ATTRIBUTE_ENABLE_ADDRESS_SANITIZER YES)
+            set_target_properties(Pong PongTests PROPERTIES XCODE_ATTRIBUTE_ENABLE_ADDRESS_SANITIZER YES)
         endif()
         if("undefined" IN_LIST _pong_san_list)
-            set_target_properties(Pong PROPERTIES XCODE_ATTRIBUTE_ENABLE_UNDEFINED_BEHAVIOR_SANITIZER YES)
+            set_target_properties(Pong PongTests PROPERTIES XCODE_ATTRIBUTE_ENABLE_UNDEFINED_BEHAVIOR_SANITIZER YES)
         endif()
     else()
-        target_compile_options(Pong PRIVATE -fsanitize=${PONG_SANITIZE} -fno-omit-frame-pointer)
-        target_link_options(Pong PRIVATE -fsanitize=${PONG_SANITIZE})
+        foreach(_t IN ITEMS Pong PongTests)
+            target_compile_options(${_t} PRIVATE -fsanitize=${PONG_SANITIZE} -fno-omit-frame-pointer)
+            target_link_options(${_t} PRIVATE -fsanitize=${PONG_SANITIZE})
+        endforeach()
     endif()
 
     message(STATUS "Pong: sanitizers enabled — ${PONG_SANITIZE}")

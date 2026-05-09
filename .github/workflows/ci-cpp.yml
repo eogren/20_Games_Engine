@@ -34,6 +34,29 @@ jobs:
       # UIApplicationMain). Re-enable build_ios.sh here when an iOS
       # implementation lands.
 
+  test:
+    name: Test (doctest)
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # cpp/test.sh uses a Ninja side-build at build/test for fast iteration.
+      # Ninja isn't preinstalled on the GitHub runner image.
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Show tool versions
+        run: |
+          ninja --version
+          cmake --version
+
+      # ctest --output-on-failure (set inside test.sh) prints failing
+      # assertions inline in the run log — the standard way to surface
+      # doctest output without a separate test-reporter action.
+      - name: Run unit tests
+        run: ./cpp/test.sh
+
   lint:
     name: Lint (clang-format + clang-tidy)
     runs-on: macos-26
