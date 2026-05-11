@@ -20,6 +20,15 @@ private:
     double time_;
 
     /**
+     * Timestamp of the first seeded frame. `time_ - start_time_` gives
+     * seconds-since-game-start in a small-magnitude double, avoiding the
+     * float precision loss that comes from passing CAMetalDisplayLink's
+     * raw timestamps (seconds-since-boot, often >1e6) into a float
+     * shader uniform.
+     */
+    double start_time_;
+
+    /**
      * Accumulated time
      */
     double accumulator_;

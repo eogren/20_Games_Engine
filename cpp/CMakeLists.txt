@@ -44,10 +44,13 @@ find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
 add_executable(Pong MACOSX_BUNDLE
     src/main.mm
     src/math/Math.h
+    src/BufferWriter.h
     src/Pong.cpp
     src/Pong.h
     src/PongApplication.mm
     src/PongApplication.h
+    src/PongState.cpp
+    src/PongState.h
     src/Platform.mm
     src/Renderer.cpp
     src/Renderer.h
@@ -163,6 +166,8 @@ enable_testing()
 
 add_executable(PongTests
     tests/MathTests.cpp
+    tests/BufferWriterTests.cpp
+    tests/Primitive2DTests.cpp
 )
 
 target_include_directories(PongTests PRIVATE
