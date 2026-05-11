@@ -59,3 +59,11 @@ under `xcodebuild`.
   driven by the current game's needs.
 - [`INSPIRATION.md`](INSPIRATION.md) — art and music direction:
   references, palette, shape language, post-processing.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+Vendored third-party code under `cpp/third_party/` retains its original
+license: `metal-cpp` (Apache-2.0) and `doctest` (MIT). See each
+directory's `LICENSE.txt`.
