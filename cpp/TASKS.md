@@ -19,7 +19,7 @@ screen (or audibly, for audio) — same rule as the Swift TASKS.md.
 Suggested ordering — each step exercises substrate the next step
 depends on. Flexible, not a hard sequence.
 
-- [ ] **Field + center line.** Static rectangles in the offscreen target.
+- [x] **Field + center line.** Static rectangles in the offscreen target.
   Exercises a "draw rectangles" pipeline (vertex layout, position-only
   PSO, plus the world-to-NDC transform for source-resolution coordinates)
   with no game-state coupling. Walls are optional — classic Pong has

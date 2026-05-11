@@ -13,6 +13,30 @@ constexpr float WORLD_HEIGHT = 240.0f;
 
 Pong::Pong(MTL::Device* device) : renderer_(device), time_(0.0), start_time_(0.0), accumulator_(0.0), seeded_(false) {}
 
+namespace
+{
+    void drawCenterLine(Renderer& renderer)
+    {
+        constexpr float midX = WORLD_WIDTH / 2.0f;
+        constexpr float dashHalfW = 3.0f;
+        constexpr float dashHalfH = 5.0f;
+        constexpr float gap = 6.0f;
+        constexpr float stride = 2 * dashHalfH + gap;
+
+        // Fit as many dashes as will leave at least `gap` of padding on each
+        // end, then center the resulting block so top/bottom gaps are equal.
+        constexpr int count = static_cast<int>((WORLD_HEIGHT - gap) / stride);
+        constexpr float blockHeight = count * (2 * dashHalfH) + (count - 1) * gap;
+        constexpr float firstCenterY = (WORLD_HEIGHT - blockHeight) / 2.0f + dashHalfH;
+
+        for (int i = 0; i < count; ++i)
+        {
+            const float y = firstCenterY + i * stride;
+            renderer.drawRect({midX, y}, {dashHalfW, dashHalfH}, {1, 1, 1, 1});
+        }
+    }
+} // namespace
+
 void Pong::tick(CA::MetalDrawable* drawable, double targetTimestamp)
 {
     if (!seeded_)
@@ -37,7 +61,7 @@ void Pong::tick(CA::MetalDrawable* drawable, double targetTimestamp)
     auto time = static_cast<float>(time_ - start_time_);
 
     renderer_.beginFrame(drawable, view, time);
-    renderer_.drawRect({160, 120}, {40, 20}, {1, 1, 1, 1});
+    drawCenterLine(renderer_);
     renderer_.endFrame();
 }
 
