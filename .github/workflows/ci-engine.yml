@@ -1,0 +1,85 @@
+name: CI (engine)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'engine/**'
+      - 'platform/**'
+      - 'games/**'
+      - 'CMakeLists.txt'
+      - '.gitattributes'
+      - '.github/workflows/ci-engine.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'platform/**'
+      - 'games/**'
+      - 'CMakeLists.txt'
+      - '.gitattributes'
+      - '.github/workflows/ci-engine.yml'
+
+jobs:
+  build-and-test:
+    name: Build & Test (Windows, MSVC + Ninja)
+    runs-on: windows-2022
+
+    env:
+      # Pin: matches what's vendored in engine/third_party/VENDORING.md
+      # (Volk vulkan-sdk-1.4.350.0). Bump in lockstep with the vendored
+      # Volk tag so the loader code and the SDK headers stay in sync.
+      VULKAN_VERSION: 1.4.350.0
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Sets INCLUDE / LIB / PATH for MSVC so Ninja can drive cl.exe.
+      # Without this, find_package fails to locate the Windows SDK.
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Direct LunarG installer rather than a community action — fewer
+      # supply-chain hops, easier to inspect, and the silent-install
+      # flags (--accept-licenses --default-answer --confirm-command
+      # install) are stable across SDK versions.
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/VulkanSDK-$env:VULKAN_VERSION-Installer.exe"
+          $installer = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Write-Host "Downloading Vulkan SDK $env:VULKAN_VERSION from $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Running installer (silent)..."
+          $process = Start-Process -FilePath $installer -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer exited with code $($process.ExitCode)" }
+          # Export VULKAN_SDK + add SDK Bin to PATH for later steps.
+          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "C:\VulkanSDK\$env:VULKAN_VERSION\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress -y
+        shell: pwsh
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          slangc -v
+          "VULKAN_SDK = $env:VULKAN_SDK"
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        shell: pwsh
+
+      - name: Build
+        run: cmake --build build
+        shell: pwsh
+
+      # ctest --output-on-failure surfaces failing doctest assertions
+      # inline in the run log — mirrors the cpp/ workflow's convention.
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure
+        shell: pwsh
