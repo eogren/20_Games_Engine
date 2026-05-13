@@ -40,11 +40,27 @@ jobs:
         with:
           arch: x64
 
+      # Cache the installed SDK directory keyed on version. The SDK is
+      # ~1GB to download and ~5min to install — caching saves both per
+      # run after the first. Cache scope is files under
+      # C:\VulkanSDK\<version>\, which covers everything compile-time
+      # needs (headers, libs, slangc). Registry-side state (layer
+      # manifests, ICD lookup) is not needed in CI today: engine_tests
+      # is pure doctest and Pong.exe doesn't create a Vulkan instance
+      # yet. Revisit if CI starts running Vulkan code.
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
+
       # Direct LunarG installer rather than a community action — fewer
       # supply-chain hops, easier to inspect, and the silent-install
       # flags (--accept-licenses --default-answer --confirm-command
-      # install) are stable across SDK versions.
+      # install) are stable across SDK versions. Only runs on cache miss.
       - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/VulkanSDK-$env:VULKAN_VERSION-Installer.exe"
@@ -54,9 +70,18 @@ jobs:
           Write-Host "Running installer (silent)..."
           $process = Start-Process -FilePath $installer -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer exited with code $($process.ExitCode)" }
-          # Export VULKAN_SDK + add SDK Bin to PATH for later steps.
-          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "C:\VulkanSDK\$env:VULKAN_VERSION\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      # Always-run: export VULKAN_SDK + add SDK Bin to PATH. On a fresh
+      # install the installer would set these for itself; on a cache
+      # restore the installer never runs, so we set them explicitly
+      # either way.
+      - name: Export Vulkan env
+        shell: pwsh
+        run: |
+          $sdkPath = "C:\VulkanSDK\$env:VULKAN_VERSION"
+          "VULKAN_SDK=$sdkPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$sdkPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          Write-Host "VULKAN_SDK=$sdkPath (cache-hit=${{ steps.cache-vulkan.outputs.cache-hit }})"
 
       - name: Install Ninja
         run: choco install ninja --no-progress -y
