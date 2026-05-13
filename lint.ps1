@@ -1,14 +1,13 @@
-# Run clang-tidy over engine/, platform/, and games/ using the existing
-# build/ directory's compile_commands.json.
+# Run clang-tidy over engine/, platform/, and games/ using the
+# `debug` preset's compile_commands.json.
 #   ./lint.ps1        — diagnose only
 #   ./lint.ps1 -Fix   — apply clang-tidy's suggested fixes
 #
-# The root CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON, so any
-# Ninja configure (cmake -S . -B build -G Ninja) produces the database
-# clang-tidy needs. If build/compile_commands.json is missing this script
-# configures it for you. Third-party libs (Volk, VMA, doctest) are
-# attached via SYSTEM include directories, so their headers are excluded
-# from diagnostics automatically.
+# CMakePresets.json sets binaryDir per preset, so the database lives at
+# build/debug/compile_commands.json. If it's missing this script
+# configures it for you via `cmake --preset debug`. Third-party libs
+# (Volk, VMA, doctest) are attached via SYSTEM include directories, so
+# their headers are excluded from diagnostics automatically.
 
 [CmdletBinding()]
 param(
@@ -29,11 +28,11 @@ if (-not (Get-Command cmake -ErrorAction SilentlyContinue))
     exit 127
 }
 
-$buildDir = 'build'
+$buildDir = 'build/debug'
 if (-not (Test-Path -Path (Join-Path $buildDir 'compile_commands.json')))
 {
     Write-Host "configuring $buildDir for clang-tidy (compile_commands.json missing)..."
-    & cmake -S . -B $buildDir -G Ninja -DCMAKE_BUILD_TYPE=Debug | Out-Null
+    & cmake --preset debug | Out-Null
     if ($LASTEXITCODE -ne 0)
     {
         Write-Error "cmake configure failed"

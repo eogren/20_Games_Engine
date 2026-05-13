@@ -6,4 +6,4 @@
 add_executable(Pong
     src/main.cpp
 )
-target_link_libraries(Pong PRIVATE platform)
+target_link_libraries(Pong PRIVATE platform engine_compile_options)
