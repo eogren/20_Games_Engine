@@ -88,8 +88,31 @@ gh pr create
 
 Trivial doc edits (a `TASKS.md` checkbox flip, a typo fix) can go direct to `main`. Anything that touches code, the build graph, or the test suite goes through a PR.
 
-**Running builds and tests.** CMake + Ninja on Windows; `cmake --build build && ctest --test-dir build` is the canonical entry. Per-package `test.sh` wrappers land alongside the directories they belong to as the test suites grow. Specifics get filled in with the scaffolding PR.
+**Running builds and tests.** `./build.ps1` at the repo root is the canonical entry — it loads the MSVC dev environment (idempotent within a session) and runs configure + build + test against a preset:
 
-## Current state (2026-05-12)
+```
+./build.ps1                                # configure + build + test, debug preset
+./build.ps1 -Preset asan                   # different preset
+./build.ps1 -Preset debug -Target build    # one step only: configure|build|test|all
+```
 
-`engine/`, `platform/`, and `games/Pong/` don't exist on this branch yet — they're being scaffolded in follow-up commits. The legacy `cpp/` tree (Metal + Objective-C++) remains as transitional reference for the math substrate and game-logic shapes that port over to the new tree; it gets removed once nothing's left to mine from it. `cpp/` itself is not being revived against Vulkan; the new code lives in `engine/`.
+Direct CMake invocation against the presets in `CMakePresets.json` is the fallback (must be run from an MSVC dev shell):
+
+```
+cmake --preset debug
+cmake --build build/debug
+ctest --preset debug
+```
+
+Presets: `debug`, `release`, `relwithdebinfo`, `asan` (MSVC `/fsanitize=address`), `ubsan` (clang-cl, `-fsanitize=undefined`), `analyze` (MSVC `/analyze` static analysis — slow, separate CI lane). Per-package `test.sh` wrappers land alongside the directories they belong to as the test suites grow.
+
+## Current state (2026-05-13)
+
+Scaffolding is in place; no real engine surface area yet.
+
+- `engine/` has a skeletal `engine::version()` entry point, the math substrate (`Angle` plus `_deg` / `_rad` literals, ported from `cpp/math/`) under `engine/src/math/`, doctest-based math tests, and vendored third-party headers for volk, VMA, and doctest under `engine/third_party/`.
+- `platform/` has a skeletal `platform::version()`. No window, no message pump, no Vulkan surface creation yet.
+- `games/Pong/` has a `main.cpp` that prints both version strings — proves engine + platform link into an executable. No game loop yet.
+- Build infra: `CMakePresets.json` with debug/release/relwithdebinfo plus asan/ubsan/analyze sanitizer lanes; clang-format + clang-tidy wired up against the new tree; CI runs the matrix.
+
+The legacy `cpp/` tree (Metal + Objective-C++) remains as transitional reference for math and game shapes still to port; it gets removed once nothing's left to mine from it. `cpp/` is not being revived against Vulkan; the new code lives in `engine/`.
