@@ -63,24 +63,39 @@ if ($files.Count -eq 0)
 
 $tidyArgs = @('-p', $buildDir, '--quiet')
 
-# Tell clang-tidy that exceptions are enabled. MSVC defaults to
-# exceptions-on without /EHsc on the command line, but clang-tidy
-# doesn't infer that default, so doctest's REQUIRE macro
-# static-asserts on "Exceptions are disabled!" otherwise.
+# doctest's REQUIRE macro static-asserts on "Exceptions are disabled!"
+# unless clang-tidy knows exceptions are on. How we tell it depends on
+# the driver mode clang-tidy picks (which itself depends on LLVM
+# version + the CMake generator that emitted the compile DB):
 #
-# Two driver-mode cases need to work:
-#   - clang mode: triggered by compile_commands.json containing
-#     clang-style flags (-isystem, -std=c++23). -fexceptions and
-#     -fcxx-exceptions are recognized and enable exceptions.
-#   - clang-cl mode: triggered by compile_commands.json containing
-#     cl-style flags (-external:I, -std:c++latest). The clang-style
-#     flags are unknown and ignored with a warning, but exceptions
-#     default to on in cl mode so doctest is happy anyway.
+#   - clang-cl mode (MSVC compile DBs with /std:, /EHsc): /EHsc in the
+#     compile command already enables exceptions, so no extra flag is
+#     needed. Passing -fexceptions here is "unknown argument" — silently
+#     ignored on LLVM <=20, but promoted to a hard error on LLVM 22+,
+#     which breaks the lint job entirely. Don't pass it.
+#   - clang mode (clang-style DBs with -std=, -isystem): /EHsc is not
+#     recognized, so we have to pass -fexceptions / -fcxx-exceptions
+#     ourselves.
 #
-# Which mode clang-tidy picks varies with both LLVM version and the
-# CMake version that emitted the compile DB. Forcing the mode (we
-# tried --driver-mode=cl) breaks the side that doesn't match.
-$tidyArgs += @('--extra-arg=-fexceptions', '--extra-arg=-fcxx-exceptions')
+# Forcing one mode with --driver-mode breaks the other side, so detect
+# from the compile DB shape instead. cl-style flags use `/std:` /
+# `/EHsc`; clang-style uses `-std=` / `-isystem`.
+$compileDbContent = Get-Content -Raw -Path (Join-Path $buildDir 'compile_commands.json')
+if ($compileDbContent -match '"-std=')
+{
+    $tidyArgs += @('--extra-arg=-fexceptions', '--extra-arg=-fcxx-exceptions')
+}
+
+# Suppress driver-mode noise that LLVM 22+ promotes to errors. The
+# compile DB contains flags that clang-cl parses but doesn't always
+# use during analysis (e.g. /Zc:preprocessor) — older LLVMs ignored
+# silently, newer ones emit `error: argument unused during compilation`,
+# which `WarningsAsErrors: '*'` then keeps as an error. These are
+# meta-diagnostics about driver invocation, not code quality, and
+# they fire from clang-tidy startup before any per-TU check filter
+# can suppress them. -Wno-* at the driver level is the only knob that
+# actually works.
+$tidyArgs += @('--extra-arg=-Wno-unused-command-line-argument')
 
 if ($Fix)
 {

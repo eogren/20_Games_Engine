@@ -10,6 +10,13 @@ Reach for vcpkg (or another package manager) the first time we want a
 dep that's actually annoying to vendor — heavy compiled libraries with
 transitive deps. Single-header stuff stays here.
 
+One-off non-vendored deps that are still small enough not to justify
+spinning up vcpkg live as `FetchContent` blocks in the top-level
+`CMakeLists.txt` instead — version-pinned in source, reproducible, no
+submodule mechanics. Today that's spdlog (`v1.15.0`, GitHub
+`gabime/spdlog`). When a second such dep arrives, the policy is to
+introduce vcpkg and migrate spdlog to it.
+
 ## Vendored deps
 
 | Dep | Version | Source |

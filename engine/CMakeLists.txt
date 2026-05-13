@@ -32,10 +32,11 @@ target_include_directories(doctest SYSTEM INTERFACE third_party/doctest)
 
 add_library(engine STATIC
     src/engine.cpp
+    src/log/Log.cpp
 )
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine
-    PUBLIC  volk vma
+    PUBLIC  volk vma spdlog::spdlog
     PRIVATE engine_compile_options  # /W4 /WX /permissive- + sanitizers — see root CMakeLists.txt.
 )
 
@@ -47,6 +48,7 @@ target_link_libraries(engine
 add_executable(engine_tests
     tests/smoke_test.cpp
     tests/MathTests.cpp
+    tests/LogTests.cpp
 )
 target_link_libraries(engine_tests PRIVATE engine doctest engine_compile_options)
 add_test(NAME engine_tests COMMAND engine_tests)
