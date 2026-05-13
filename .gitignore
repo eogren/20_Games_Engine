@@ -12,6 +12,9 @@ xcuserdata/
 *.xcuserstate
 *.xcworkspace/xcuserdata/
 
+# JetBrains IDEs (CLion / IntelliJ per-user project state)
+.idea/
+
 # Credentials
 .netrc
 
