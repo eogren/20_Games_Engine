@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# CMake / Ninja build dirs.
+build/
+build-*/
+
 # Xcode (cpp/ still uses the Xcode generator on macOS)
 DerivedData/
 xcuserdata/
