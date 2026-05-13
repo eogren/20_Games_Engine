@@ -8,6 +8,10 @@ on:
       - 'platform/**'
       - 'games/**'
       - 'CMakeLists.txt'
+      - '.clang-format'
+      - '.clang-tidy'
+      - 'format.ps1'
+      - 'lint.ps1'
       - '.gitattributes'
       - '.github/workflows/ci-engine.yml'
   pull_request:
@@ -16,6 +20,10 @@ on:
       - 'platform/**'
       - 'games/**'
       - 'CMakeLists.txt'
+      - '.clang-format'
+      - '.clang-tidy'
+      - 'format.ps1'
+      - 'lint.ps1'
       - '.gitattributes'
       - '.github/workflows/ci-engine.yml'
 
@@ -110,4 +118,98 @@ jobs:
       # inline in the run log — mirrors the cpp/ workflow's convention.
       - name: Run unit tests
         run: ctest --test-dir build --output-on-failure
+        shell: pwsh
+
+  lint:
+    name: Lint (clang-format + clang-tidy)
+    runs-on: windows-2022
+
+    env:
+      # Same SDK pin as build-and-test. clang-tidy needs the Vulkan
+      # headers via compile_commands.json, so the lint job has to install
+      # the SDK too. The cache shared with build-and-test makes the
+      # second install effectively free after the first run.
+      VULKAN_VERSION: 1.4.350.0
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # MSVC env: same reason as build-and-test — cmake's find_package
+      # for the Windows SDK + cl.exe resolution. clang-tidy itself runs
+      # against the LLVM toolchain, but the compile commands it consumes
+      # reference cl.exe and the MSVC headers.
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
+
+      - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkan_sdk.exe"
+          $installer = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Write-Host "Downloading Vulkan SDK $env:VULKAN_VERSION from $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Running installer (silent)..."
+          $process = Start-Process -FilePath $installer -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer exited with code $($process.ExitCode)" }
+
+      - name: Export Vulkan env
+        shell: pwsh
+        run: |
+          $sdkPath = "C:\VulkanSDK\$env:VULKAN_VERSION"
+          "VULKAN_SDK=$sdkPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$sdkPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress -y
+        shell: pwsh
+
+      # windows-2022 ships LLVM at C:\Program Files\LLVM\bin — clang-format
+      # and clang-tidy are both there. Add it to PATH so the scripts can
+      # find them without a Chocolatey roundtrip.
+      - name: Add LLVM to PATH
+        shell: pwsh
+        run: |
+          $llvmBin = "C:\Program Files\LLVM\bin"
+          if (-not (Test-Path $llvmBin))
+          {
+              choco install llvm --no-progress -y
+          }
+          "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          clang-format --version
+          clang-tidy --version
+          cmake --version
+          ninja --version
+
+      # clang-format check is fast and doesn't need compile_commands.json.
+      # Run it first so format violations surface before the slower
+      # clang-tidy pass.
+      - name: clang-format check
+        run: ./format.ps1
+        shell: pwsh
+
+      # Configure produces compile_commands.json under build/ (the root
+      # CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON). lint.ps1
+      # falls back to configuring itself if the file is missing, but
+      # doing it explicitly here keeps the steps' responsibilities
+      # legible in the run log.
+      - name: Configure (for compile_commands.json)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        shell: pwsh
+
+      - name: clang-tidy
+        run: ./lint.ps1
         shell: pwsh

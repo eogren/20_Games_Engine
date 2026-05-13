@@ -1,9 +1,11 @@
 #include "platform.h"
 
-namespace platform {
+namespace platform
+{
 
-const char* version() {
-    return "0.0.1";
-}
+    const char* version()
+    {
+        return "0.0.1";
+    }
 
 } // namespace platform

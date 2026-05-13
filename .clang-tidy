@@ -1,0 +1,50 @@
+# Curated starter ruleset for the engine/ + platform/ + games/ tree.
+# Mirrors cpp/.clang-tidy in spirit, with the metal-cpp / Cocoa-specific
+# suppressions stripped (this tree uses Vulkan, not metal-cpp). Add
+# Vulkan-specific exemptions only when a real diagnostic surfaces; don't
+# pre-suppress speculatively.
+#
+# Deliberately narrow scope:
+#   - bugprone-*       : real-bug catchers
+#   - performance-*    : low-noise wins (move/copy, string ops)
+#   - clang-analyzer-* : path-sensitive checks
+#   - a few cppcoreguidelines / modernize must-haves
+#
+# Disabled on purpose:
+#   - bugprone-easily-swappable-parameters   : famously noisy
+#   - bugprone-narrowing-conversions         : duplicates cppcoreguidelines version
+#   - bugprone-exception-escape              : trips on main() with no try/catch
+#   - bugprone-implicit-widening-of-multiplication-result : noisy on uint32_t math
+#   - cppcoreguidelines-narrowing-conversions: Vulkan APIs are uint32_t-heavy;
+#     re-enable once we want to scrub explicit casts everywhere
+#
+# Run `./lint.ps1` to invoke. Re-enable a check by removing the `-` prefix.
+
+Checks: >
+  bugprone-*,
+  performance-*,
+  clang-analyzer-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-init-variables,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-exception-escape,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -cppcoreguidelines-narrowing-conversions
+
+# Local and CI alike fail on any reported diagnostic. Filter noisy checks
+# in Checks: above rather than letting warnings pile up.
+WarningsAsErrors: '*'
+
+# Only diagnose headers under the engine/platform/games trees. Skips
+# system headers, Vulkan SDK, and engine/third_party/ (Volk, VMA, doctest
+# are pulled in via SYSTEM include directories, so this regex would
+# already exclude them — but the regex documents intent).
+HeaderFilterRegex: '(engine|platform|games/[^/]+)/(src|tests)/'
+
+FormatStyle: file

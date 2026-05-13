@@ -1,0 +1,43 @@
+# Style for the engine/ + platform/ + games/ tree. Run `./format.ps1` to
+# check, `./format.ps1 -Write` to apply. cpp/ has its own .clang-format
+# (with an ObjC stanza); clang-format walks up from each file and picks
+# the nearest config, so the two trees don't collide.
+
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: Latest
+
+ColumnLimit: 120
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+
+BreakBeforeBraces: Allman
+NamespaceIndentation: All
+
+# `public:` / `private:` sit flush with the class keyword's column.
+AccessModifierOffset: -4
+
+# `T* p` and `T& r` — type-attached pointers and refs.
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Includes: existing files use a deliberate framework-first / local-after order.
+SortIncludes: false
+IncludeBlocks: Preserve
+
+AlignAfterOpenBracket: Align
+AlignTrailingComments: true
+SpaceAfterCStyleCast: false
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+PenaltyBreakString: 1000
+...
