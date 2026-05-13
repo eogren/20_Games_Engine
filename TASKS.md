@@ -1,20 +1,41 @@
 # Tasks
 
 **Status (2026-05-12):** Engine is mid-pivot from Apple-only Metal/Swift
-to Windows-primary Vulkan/C++ (see [`CLAUDE.md`](CLAUDE.md)). This
-top-level plan is being rebuilt from scratch alongside the
-`engine/` + `platform/` scaffolding work. Until that lands, the
-substrate task list lives in the scaffolding PR rather than here.
+to Windows-primary Vulkan/C++ (see [`CLAUDE.md`](CLAUDE.md)). Scaffold +
+vendored deps + verified build are in; first real Vulkan/Win32 surface
+is what's next.
 
 ## Immediate work
 
-- [ ] Scaffold `engine/`, `platform/`, `games/Pong/` (CMake skeleton,
-  Win32 window, Vulkan instance + device + swapchain, first cleared
-  frame on screen).
-- [ ] Port `cpp/src/math/` into `engine/src/math/` — first portable
-  substrate that survives the pivot intact.
-- [ ] First triangle through the Slang → SPIR-V → Vulkan pipeline.
-- [ ] Bring Pong gameplay up on the new renderer — paddles, ball,
+- [x] **Scaffold `engine/` + `platform/` + `games/Pong/`** — CMake
+  graph, vendored deps (Volk, VMA, doctest), placeholder source files.
+  `cmake -G Ninja` + MSVC verified on Windows; Pong.exe runs, ctest
+  smoke test passes.
+
+Next steps below. (2) and (3) are independent and can move in parallel;
+(4) is where they meet. (1) has no Vulkan/Win32 surface so it's a safe
+warm-up at any point.
+
+- [ ] **Port `cpp/src/math/` into `engine/src/math/`.** First portable
+  substrate that survives the pivot intact. Pure C++, no Vulkan or
+  Win32 — fast warm-up, doctest tests carry over from
+  `cpp/tests/MathTests.cpp`.
+- [ ] **First Volk init + `VkInstance` creation** in engine. Proves
+  the Vulkan SDK + Volk loader chain works end-to-end without needing
+  a window. `vulkaninfo`-equivalent output is enough confirmation.
+  Independent of Win32.
+- [ ] **Win32 window in `platform/`.** Visible `HWND` with a pumping
+  message loop, clean shutdown on `WM_CLOSE`. No Vulkan yet —
+  developable in parallel with (2).
+- [ ] **Surface + swapchain + first cleared frame.** Where (2) and (3)
+  meet: `vkCreateWin32SurfaceKHR` from platform feeds engine's
+  `VkSwapchainKHR`; engine clears the swapchain image to a solid color
+  per frame and presents. First pixels on screen.
+- [ ] **First triangle through Slang → SPIR-V → Vulkan.** Wires up the
+  `slangc` custom-command pipeline in CMake, a vertex+fragment Slang
+  shader under `engine/shaders/`, a graphics pipeline, and a single
+  draw call.
+- [ ] **Bring Pong gameplay up on the new renderer.** Paddles, ball,
   collision, score. The cpp/ Pong gameplay shape (see `cpp/TASKS.md`)
   ports over; the renderer underneath does not.
 
