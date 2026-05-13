@@ -1,0 +1,113 @@
+name: CI (engine)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'engine/**'
+      - 'platform/**'
+      - 'games/**'
+      - 'CMakeLists.txt'
+      - '.gitattributes'
+      - '.github/workflows/ci-engine.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'platform/**'
+      - 'games/**'
+      - 'CMakeLists.txt'
+      - '.gitattributes'
+      - '.github/workflows/ci-engine.yml'
+
+jobs:
+  build-and-test:
+    name: Build & Test (Windows, MSVC + Ninja)
+    runs-on: windows-2022
+
+    env:
+      # Pin: matches what's vendored in engine/third_party/VENDORING.md
+      # (Volk vulkan-sdk-1.4.350.0). Bump in lockstep with the vendored
+      # Volk tag so the loader code and the SDK headers stay in sync.
+      VULKAN_VERSION: 1.4.350.0
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Sets INCLUDE / LIB / PATH for MSVC so Ninja can drive cl.exe.
+      # Without this, find_package fails to locate the Windows SDK.
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Cache the installed SDK directory keyed on version. The SDK is
+      # ~1GB to download and ~5min to install — caching saves both per
+      # run after the first. Cache scope is files under
+      # C:\VulkanSDK\<version>\, which covers everything compile-time
+      # needs (headers, libs, slangc). Registry-side state (layer
+      # manifests, ICD lookup) is not needed in CI today: engine_tests
+      # is pure doctest and Pong.exe doesn't create a Vulkan instance
+      # yet. Revisit if CI starts running Vulkan code.
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
+
+      # Direct LunarG installer rather than a community action — fewer
+      # supply-chain hops, easier to inspect, and the silent-install
+      # flags (--accept-licenses --default-answer --confirm-command
+      # install) are stable across SDK versions. Only runs on cache miss.
+      - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # LunarG serves the Windows installer at /<version>/windows/vulkan_sdk.exe
+          # (the literal filename, not VulkanSDK-<version>-Installer.exe — that path
+          # 404s). Same file is also reachable at /latest/windows/vulkan_sdk.exe.
+          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkan_sdk.exe"
+          $installer = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Write-Host "Downloading Vulkan SDK $env:VULKAN_VERSION from $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Running installer (silent)..."
+          $process = Start-Process -FilePath $installer -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer exited with code $($process.ExitCode)" }
+
+      # Always-run: export VULKAN_SDK + add SDK Bin to PATH. On a fresh
+      # install the installer would set these for itself; on a cache
+      # restore the installer never runs, so we set them explicitly
+      # either way.
+      - name: Export Vulkan env
+        shell: pwsh
+        run: |
+          $sdkPath = "C:\VulkanSDK\$env:VULKAN_VERSION"
+          "VULKAN_SDK=$sdkPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$sdkPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          Write-Host "VULKAN_SDK=$sdkPath (cache-hit=${{ steps.cache-vulkan.outputs.cache-hit }})"
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress -y
+        shell: pwsh
+
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          slangc -v
+          "VULKAN_SDK = $env:VULKAN_SDK"
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        shell: pwsh
+
+      - name: Build
+        run: cmake --build build
+        shell: pwsh
+
+      # ctest --output-on-failure surfaces failing doctest assertions
+      # inline in the run log — mirrors the cpp/ workflow's convention.
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure
+        shell: pwsh

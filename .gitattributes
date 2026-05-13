@@ -1,0 +1,18 @@
+# Default: text files use LF in the repo. Git can convert to CRLF on
+# checkout on Windows depending on core.autocrlf, but the canonical
+# representation in the index is LF — settles the cross-platform churn.
+* text=auto eol=lf
+
+# Binary file types — don't try to convert line endings.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.spv  binary
+*.metallib binary
+
+# Shader sources are text.
+*.slang text
+*.metal text
+*.glsl  text
+*.hlsl  text

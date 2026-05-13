@@ -1,69 +1,81 @@
 # 20 Games Engine
 
-An Apple-only, Metal-backed game engine, built alongside the games it
-runs. The first game is a synthwave tunnel-runner take on Flappy Bird;
-the engine grows from concrete game needs rather than speculative
-abstractions (see [`CLAUDE.md`](CLAUDE.md)).
+A Windows-primary, Vulkan-backed game engine, built alongside the games
+it runs. The engine grows from concrete game needs rather than
+speculative abstractions (see [`CLAUDE.md`](CLAUDE.md)).
 
-Targets macOS 14+ and iPadOS 17+. Vulkan / DX12 / WebGPU are explicitly
-out of scope.
+Primary target is Windows 10+ on x64. iPad support is a future option
+via MoltenVK — not a parallel Metal backend. Direct3D 12, OpenGL, and
+WebGPU are explicitly out of scope.
+
+## Stack
+
+- **C++23** + **CMake** + **Ninja**
+- **Vulkan 1.3** (dynamic rendering, `synchronization2`, timeline semaphores)
+- **Slang** → SPIR-V, compiled at build time via `slangc` from the Vulkan SDK
+- **Win32** for the platform layer (no GLFW/SDL3)
+- **Volk** for dynamic Vulkan loading, **VMA** for memory allocation
 
 ## Layout
 
 ```
-Engine/      Swift package — game logic, simulation, math, input, rendering.
-Platform/    Swift package — OS-divergence layer (window/view, app lifecycle,
-             display link, touch vs. mouse). Depends on Engine.
-FlappyBird/  Xcode app — first game, implements Engine's `Game` protocol
-             and hands the instance to Platform's `Host`.
+engine/      Engine library — game logic, simulation, math, input, rendering.
+             Talks Vulkan directly. Knows nothing about windows or message loops.
+platform/    OS-divergence layer — Win32 window + message pump,
+             vkCreateWin32SurfaceKHR, Raw Input / XInput plumbing.
+             Depends on engine.
+games/Pong/  First game — implements engine's Game interface and hands
+             the instance to platform's host.
 ```
 
-Engine never imports Platform. Cross-Apple input (keyboard, gamepad,
-GCMouse) lives in Engine; OS-divergent input (touch, NSResponder mouse)
-lives in Platform.
+Engine never imports Platform. Portable input (keyboard codes, gamepad
+button identity) lives in engine; the OS-specific event path lives in
+platform.
 
 ## Build & run
 
-The FlappyBird app is the canonical way to bring up the engine — it's
-the only target that pulls in compiled `.metal` shaders.
+Requires the **Vulkan SDK 1.3.296+** installed (`VULKAN_SDK` env var
+set). `slangc` ships with the SDK.
 
 ```sh
-open FlappyBird/FlappyBird.xcodeproj
-# Pick the FlappyBird scheme; Run on a Mac, an iPad, or the iOS simulator.
-```
-
-iOS device builds can also be driven from the command line:
-
-```sh
-Platform/build-ios.sh
+cmake -S . -B build -G Ninja
+cmake --build build
+build/games/Pong/Pong.exe
 ```
 
 ## Tests
 
-Each package owns its own `test.sh`:
-
 ```sh
-Engine/test.sh                                   # full Engine suite (xcodebuild)
-Engine/test.sh -only-testing:EngineTests/RendererSmokeTests
+ctest --test-dir build
 ```
 
-`xcodebuild` is required because SwiftPM's CLI doesn't invoke the Metal
-compiler — renderer pixel-readback tests skip under `swift test` but run
-under `xcodebuild`.
+Renderer pixel-readback tests skip on machines without a working
+Vulkan ICD so the rest of the suite stays runnable.
+
+## Status
+
+Mid-pivot from an Apple-only Metal engine to the stack above. `engine/`,
+`platform/`, and `games/Pong/` are pending in follow-up commits on this
+branch. The `cpp/` directory holds the prior Metal/Objective-C++ Pong
+work — kept as transitional reference for math + game-logic shapes that
+port over, removed once nothing's left to mine.
 
 ## Documentation
 
 - [`CLAUDE.md`](CLAUDE.md) — architecture, design influences, layer
   split, frame ordering, workflow conventions.
-- [`TASKS.md`](TASKS.md) — engineering plan: phased substrate work
-  driven by the current game's needs.
-- [`INSPIRATION.md`](INSPIRATION.md) — art and music direction:
-  references, palette, shape language, post-processing.
+- [`TASKS.md`](TASKS.md) — engineering plan: substrate work driven by
+  the current game's needs.
+- [`INSPIRATION.md`](INSPIRATION.md) — art and music direction across
+  games (Pong leans cyberpunk; Flappy's aesthetic is still being
+  decided — the original synthwave-on-side-scroller pairing has
+  alignment tension).
 
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
 
-Vendored third-party code under `cpp/third_party/` retains its original
-license: `metal-cpp` (Apache-2.0) and `doctest` (MIT). See each
-directory's `LICENSE.txt`.
+Vendored third-party code (Volk, VMA, and the doctest test harness)
+retains its original license — see each directory's `LICENSE.txt`. The
+transitional `cpp/third_party/` retains `metal-cpp` (Apache-2.0) and
+`doctest` (MIT) until `cpp/` is removed.
