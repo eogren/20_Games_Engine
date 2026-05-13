@@ -5,12 +5,14 @@
 // land in follow-up commits.
 
 #include "engine.h"
+#include "log/Log.h"
 #include "platform.h"
 
-#include <cstdio>
+#include <spdlog/spdlog.h>
 
 int main()
 {
-    std::printf("Pong - engine %s, platform %s\n", engine::version(), platform::version());
+    engine::log::init({.file_path = "pong.log"});
+    spdlog::info("Pong - engine {}, platform {}", engine::version(), platform::version());
     return 0;
 }

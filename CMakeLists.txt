@@ -111,6 +111,36 @@ if(ENGINE_ENABLE_UBSAN)
     target_link_options(engine_compile_options INTERFACE -fsanitize=undefined)
 endif()
 
+# ---- Third-party deps fetched at configure time ---------------------
+#
+# Single-header / single-file deps stay vendored under
+# engine/third_party/ (see engine/third_party/VENDORING.md). spdlog is
+# a whole source tree, so it lives here under FetchContent instead —
+# version-pinned in source, reproducible, no submodule mechanics. When
+# a 2nd non-trivial dep arrives the policy is to introduce vcpkg; until
+# then FetchContent is the right call for a one-off.
+#
+# SYSTEM marks spdlog's include dirs as system headers so its own
+# warnings stay out of /W4 + clang-tidy on our code. EXCLUDE_FROM_ALL
+# keeps spdlog out of the default build target — it's pulled in only
+# when engine links against it.
+
+include(FetchContent)
+
+set(SPDLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_BENCH OFF CACHE BOOL "" FORCE)
+set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG        v1.15.0
+    GIT_SHALLOW    TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(spdlog)
+
 enable_testing()
 
 add_subdirectory(engine)
