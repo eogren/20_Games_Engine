@@ -142,13 +142,36 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     find_library(UIKIT_FRAMEWORK UIKit REQUIRED)
     target_link_libraries(Pong PRIVATE ${UIKIT_FRAMEWORK})
+
+    # iOS app icon: asset catalog at Resources/Assets.xcassets, with the
+    # AppIcon set holding a single 1024x1024 source (Xcode/actool generate
+    # the per-device variants and inject the CFBundleIcons plist keys).
+    # Regenerate via Resources/generate_icons.py.
+    set(_pong_xcassets ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Assets.xcassets)
+    target_sources(Pong PRIVATE ${_pong_xcassets})
+    set_source_files_properties(${_pong_xcassets} PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources
+    )
     set_target_properties(Pong PROPERTIES
-        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY      "1,2"  # iPhone + iPad
-        XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET  "26.0"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY              "1,2"  # iPhone + iPad
+        XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET          "26.0"
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME  "AppIcon"
     )
 else()
     find_library(APPKIT_FRAMEWORK AppKit REQUIRED)
     target_link_libraries(Pong PRIVATE ${APPKIT_FRAMEWORK})
+
+    # macOS app icon: prebuilt .icns copied into the bundle's Resources/
+    # and referenced via CFBundleIconFile (MACOSX_BUNDLE_ICON_FILE).
+    # Regenerate via Resources/generate_icons.py.
+    set(_pong_icns ${CMAKE_CURRENT_SOURCE_DIR}/Resources/AppIcon.icns)
+    target_sources(Pong PRIVATE ${_pong_icns})
+    set_source_files_properties(${_pong_icns} PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources
+    )
+    set_target_properties(Pong PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE "AppIcon"
+    )
 endif()
 
 # Opt-in sanitizers. Use a separate build dir so toggles don't fight cache:
