@@ -64,21 +64,24 @@ if ($files.Count -eq 0)
 
 $tidyArgs = @('-p', $buildDir, '--quiet')
 
-# Force clang-cl driver mode + /EHsc. Two concerns stacked here:
+# Tell clang-tidy that exceptions are enabled. MSVC defaults to
+# exceptions-on without /EHsc on the command line, but clang-tidy
+# doesn't infer that default, so doctest's REQUIRE macro
+# static-asserts on "Exceptions are disabled!" otherwise.
 #
-# 1. Driver mode. Some LLVM versions auto-switch to clang-cl when the
-#    compile DB references cl.exe; others parse args in clang mode
-#    regardless. Explicitly setting --driver-mode=cl removes that
-#    version-dependent behavior. --extra-arg-before places it ahead of
-#    the compile-DB args so cl-style flags from the DB (-std:c++latest,
-#    /Foo, /Fd, etc.) are recognized correctly.
+# Two driver-mode cases need to work:
+#   - clang mode: triggered by compile_commands.json containing
+#     clang-style flags (-isystem, -std=c++23). -fexceptions and
+#     -fcxx-exceptions are recognized and enable exceptions.
+#   - clang-cl mode: triggered by compile_commands.json containing
+#     cl-style flags (-external:I, -std:c++latest). The clang-style
+#     flags are unknown and ignored with a warning, but exceptions
+#     default to on in cl mode so doctest is happy anyway.
 #
-# 2. /EHsc. MSVC defaults to exceptions-on without the flag on the
-#    command line, but clang-tidy doesn't infer that default, so
-#    doctest's REQUIRE macro static-asserts on "Exceptions are
-#    disabled!" otherwise. Passing /EHsc explicitly turns exceptions
-#    on in clang-cl driver mode.
-$tidyArgs += @('--extra-arg-before=--driver-mode=cl', '--extra-arg=/EHsc')
+# Which mode clang-tidy picks varies with both LLVM version and the
+# CMake version that emitted the compile DB. Forcing the mode (we
+# tried --driver-mode=cl) breaks the side that doesn't match.
+$tidyArgs += @('--extra-arg=-fexceptions', '--extra-arg=-fcxx-exceptions')
 
 if ($Fix)
 {
