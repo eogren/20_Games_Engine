@@ -14,5 +14,21 @@ int main()
 {
     engine::log::init({.file_path = "pong.log"});
     spdlog::info("Pong - engine {}, platform {}", engine::version(), platform::version());
+
+    // TODO: source this from platform once platform exposes
+    // requiredInstanceExtensions(). For now the game knows it's running on
+    // win32, which is fine while platform is still a stub.
+    static constexpr const char* kPlatformExtensions[] = {
+        "VK_KHR_surface",
+        "VK_KHR_win32_surface",
+    };
+
+    engine::Engine eng;
+    if (auto r = eng.initRenderer("Pong", kPlatformExtensions); !r)
+    {
+        spdlog::error("Renderer init failed: {}", static_cast<int>(r.error()));
+        return 1;
+    }
+
     return 0;
 }

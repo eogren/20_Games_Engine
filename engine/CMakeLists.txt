@@ -33,6 +33,7 @@ target_include_directories(doctest SYSTEM INTERFACE third_party/doctest)
 add_library(engine STATIC
     src/engine.cpp
     src/log/Log.cpp
+    src/renderer/renderer.cpp
 )
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine
