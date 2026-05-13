@@ -8,6 +8,7 @@ on:
       - 'platform/**'
       - 'games/**'
       - 'CMakeLists.txt'
+      - 'CMakePresets.json'
       - '.clang-format'
       - '.clang-tidy'
       - 'format.ps1'
@@ -20,17 +21,40 @@ on:
       - 'platform/**'
       - 'games/**'
       - 'CMakeLists.txt'
+      - 'CMakePresets.json'
       - '.clang-format'
       - '.clang-tidy'
       - 'format.ps1'
       - 'lint.ps1'
       - '.gitattributes'
       - '.github/workflows/ci-engine.yml'
+  # Nightly + manual triggers for the extended-checks job (ASan, UBSan,
+  # MSVC /analyze). Those checks aren't gating per-PR — see the job's
+  # `if:` guard below.
+  schedule:
+    - cron: '0 11 * * *'  # 11:00 UTC daily (~7AM ET / 4AM PT)
+  workflow_dispatch:
 
 jobs:
+  # --------------------------------------------------------------------
+  # Build & test — runs three configs on every PR and every push to
+  # main:
+  #   debug    — primary developer config; clang-tidy uses this DB
+  #   release  — catches uninit / optimizer-only issues Debug hides
+  #   analyze  — MSVC /analyze static checks (binary still produced;
+  #              the /analyze pass is purely additive)
+  # Each matrix entry is a separate Windows runner; the Vulkan SDK
+  # cache is shared across all three so only the first one over a
+  # given SDK version pays the install cost.
+  # --------------------------------------------------------------------
   build-and-test:
-    name: Build & Test (Windows, MSVC + Ninja)
+    name: Build & Test (${{ matrix.preset }})
     runs-on: windows-2022
+
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [debug, release, analyze]
 
     env:
       # Pin: matches what's vendored in engine/third_party/VENDORING.md
@@ -106,20 +130,28 @@ jobs:
           slangc -v
           "VULKAN_SDK = $env:VULKAN_SDK"
 
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Configure (${{ matrix.preset }})
+        run: cmake --preset ${{ matrix.preset }}
         shell: pwsh
 
-      - name: Build
-        run: cmake --build build
+      - name: Build (${{ matrix.preset }})
+        run: cmake --build --preset ${{ matrix.preset }}
         shell: pwsh
 
       # ctest --output-on-failure surfaces failing doctest assertions
       # inline in the run log — mirrors the cpp/ workflow's convention.
-      - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure
+      # The test preset sets this via `output.outputOnFailure` in
+      # CMakePresets.json.
+      - name: Run unit tests (${{ matrix.preset }})
+        run: ctest --preset ${{ matrix.preset }}
         shell: pwsh
 
+  # --------------------------------------------------------------------
+  # Lint — clang-format + clang-tidy. Uses the `debug` preset's
+  # compile_commands.json. Unchanged behavior vs. the pre-preset
+  # workflow, just routed through `cmake --preset` instead of a
+  # hand-rolled configure line.
+  # --------------------------------------------------------------------
   lint:
     name: Lint (clang-format + clang-tidy)
     runs-on: windows-2022
@@ -201,15 +233,109 @@ jobs:
         run: ./format.ps1
         shell: pwsh
 
-      # Configure produces compile_commands.json under build/ (the root
-      # CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON). lint.ps1
-      # falls back to configuring itself if the file is missing, but
-      # doing it explicitly here keeps the steps' responsibilities
-      # legible in the run log.
-      - name: Configure (for compile_commands.json)
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      # Configure with the debug preset to produce
+      # build/debug/compile_commands.json. lint.ps1 falls back to
+      # configuring itself if the file is missing, but doing it
+      # explicitly here keeps the steps' responsibilities legible
+      # in the run log.
+      - name: Configure (debug preset, for compile_commands.json)
+        run: cmake --preset debug
         shell: pwsh
 
       - name: clang-tidy
         run: ./lint.ps1
+        shell: pwsh
+
+  # --------------------------------------------------------------------
+  # Extended checks — ASan + UBSan (clang-cl). Runtime sanitizers, so
+  # their value scales with the amount of code exercised by the test
+  # suite. Today's tests are a doctest smoke + math; once there's real
+  # simulation/render code these will earn their keep more strongly.
+  # Runs nightly + on manual dispatch so regressions surface within
+  # ~24h. Locally: `cmake --preset asan` or `--preset ubsan`.
+  # --------------------------------------------------------------------
+  extended-checks:
+    name: Extended checks (ASan + UBSan)
+    runs-on: windows-2022
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    env:
+      VULKAN_VERSION: 1.4.350.0
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Cache Vulkan SDK
+        id: cache-vulkan
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
+
+      - name: Install Vulkan SDK
+        if: steps.cache-vulkan.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkan_sdk.exe"
+          $installer = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
+          Write-Host "Downloading Vulkan SDK $env:VULKAN_VERSION from $url"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Running installer (silent)..."
+          $process = Start-Process -FilePath $installer -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer exited with code $($process.ExitCode)" }
+
+      - name: Export Vulkan env
+        shell: pwsh
+        run: |
+          $sdkPath = "C:\VulkanSDK\$env:VULKAN_VERSION"
+          "VULKAN_SDK=$sdkPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$sdkPath\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress -y
+        shell: pwsh
+
+      # clang-cl ships with VS 2022; msvc-dev-cmd@v1 puts the VS bin
+      # directory on PATH, so `clang-cl` resolves without extra install.
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          cl /Bv 2>&1 | Select-Object -First 1
+          clang-cl --version
+
+      # --- ASan ------------------------------------------------------
+      # Configure with the `asan` preset (strips /RTC1, adds
+      # /fsanitize=address). msvc-dev-cmd has already added the ASan
+      # runtime DLL directory to PATH, so engine_tests can launch and
+      # any heap/stack overrun fires through to ctest's failure path.
+      - name: Configure (asan)
+        run: cmake --preset asan
+        shell: pwsh
+
+      - name: Build (asan)
+        run: cmake --build --preset asan
+        shell: pwsh
+
+      - name: Run unit tests (asan)
+        run: ctest --preset asan
+        shell: pwsh
+
+      # --- UBSan (clang-cl) -----------------------------------------
+      - name: Configure (ubsan, clang-cl)
+        run: cmake --preset ubsan
+        shell: pwsh
+
+      - name: Build (ubsan)
+        run: cmake --build --preset ubsan
+        shell: pwsh
+
+      - name: Run unit tests (ubsan)
+        run: ctest --preset ubsan
         shell: pwsh

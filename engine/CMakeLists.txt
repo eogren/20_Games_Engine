@@ -34,7 +34,10 @@ add_library(engine STATIC
     src/engine.cpp
 )
 target_include_directories(engine PUBLIC src)
-target_link_libraries(engine PUBLIC volk vma)
+target_link_libraries(engine
+    PUBLIC  volk vma
+    PRIVATE engine_compile_options  # /W4 /WX /permissive- + sanitizers — see root CMakeLists.txt.
+)
 
 # ---- Tests ----------------------------------------------------------
 
@@ -45,5 +48,5 @@ add_executable(engine_tests
     tests/smoke_test.cpp
     tests/MathTests.cpp
 )
-target_link_libraries(engine_tests PRIVATE engine doctest)
+target_link_libraries(engine_tests PRIVATE engine doctest engine_compile_options)
 add_test(NAME engine_tests COMMAND engine_tests)
