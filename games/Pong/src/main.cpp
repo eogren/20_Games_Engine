@@ -33,5 +33,6 @@ int main()
         return 1;
     }
 
+    host.GameLoop();
     return 0;
 }

@@ -35,6 +35,29 @@ namespace platform
             }
         }
 
+        void Platform::GameLoop()
+        {
+            ::ShowWindow(wnd_, SW_SHOW);
+            ::UpdateWindow(wnd_);
+
+            MSG msg;
+            while (running_)
+            {
+                while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+                {
+                    if (msg.message == WM_QUIT)
+                    {
+                        running_ = false;
+                    }
+                    else
+                    {
+                        ::TranslateMessage(&msg);
+                        ::DispatchMessage(&msg);
+                    }
+                }
+            }
+        }
+
         LRESULT CALLBACK Platform::wndProcThunk(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             if (uMsg == WM_NCCREATE)
@@ -57,7 +80,17 @@ namespace platform
 
         LRESULT Platform::wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
-            return ::DefWindowProc(hwnd, uMsg, wParam, lParam);
+            switch (uMsg)
+            {
+            case WM_DESTROY:
+                ::PostQuitMessage(0);
+                return 0;
+            case WM_SIZE:
+                minimized_ = (wParam == SIZE_MINIMIZED);
+                return 0;
+            default:
+                return ::DefWindowProc(hwnd, uMsg, wParam, lParam);
+            }
         }
 
     } // namespace win32
