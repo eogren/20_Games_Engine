@@ -205,18 +205,18 @@ jobs:
         run: choco install ninja --no-progress -y
         shell: pwsh
 
-      # windows-2022 ships LLVM at C:\Program Files\LLVM\bin — clang-format
-      # and clang-tidy are both there. Add it to PATH so the scripts can
-      # find them without a Chocolatey roundtrip.
-      - name: Add LLVM to PATH
+      # Install a pinned LLVM. The runner image ships its own LLVM at
+      # C:\Program Files\LLVM\bin (currently 20.x), but we pin
+      # explicitly so the lint output stays stable across runs even
+      # when the bundled version moves, and so CI matches what we run
+      # locally — driver-mode strictness drifts across LLVM majors and
+      # caused a CI/local split previously. `--force` overwrites the
+      # preinstalled tree at the standard path.
+      - name: Install LLVM (pinned)
         shell: pwsh
         run: |
-          $llvmBin = "C:\Program Files\LLVM\bin"
-          if (-not (Test-Path $llvmBin))
-          {
-              choco install llvm --no-progress -y
-          }
-          "$llvmBin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          choco install llvm --version=22.1.5 --no-progress -y --force
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Show tool versions
         shell: pwsh

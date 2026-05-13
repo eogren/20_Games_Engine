@@ -17,6 +17,15 @@
 #   - bugprone-implicit-widening-of-multiplication-result : noisy on uint32_t math
 #   - cppcoreguidelines-narrowing-conversions: Vulkan APIs are uint32_t-heavy;
 #     re-enable once we want to scrub explicit casts everywhere
+#   - clang-analyzer-optin.core.EnumCastOutOfRange: opt-in analyzer check
+#     (not on by default in the static analyzer; pulled in by the broad
+#     clang-analyzer-* glob). False-positives on the C++ bitmask-enum
+#     idiom — MSVC's <filesystem> ORs `__std_fs_stats_flags` bits through
+#     `_BITMASK_OPS` in <type_traits>, and the result of `a | b` isn't a
+#     named enumerator. The diagnostic lands in a system header with no
+#     user-code line to NOLINT, and rewriting our code doesn't dodge it
+#     (any <filesystem> consumer trips the same path). Re-enable if/when
+#     the check learns the bitmask idiom.
 #
 # Run `./lint.ps1` to invoke. Re-enable a check by removing the `-` prefix.
 
@@ -35,7 +44,8 @@ Checks: >
   -bugprone-narrowing-conversions,
   -bugprone-exception-escape,
   -bugprone-implicit-widening-of-multiplication-result,
-  -cppcoreguidelines-narrowing-conversions
+  -cppcoreguidelines-narrowing-conversions,
+  -clang-analyzer-optin.core.EnumCastOutOfRange
 
 # Local and CI alike fail on any reported diagnostic. Filter noisy checks
 # in Checks: above rather than letting warnings pile up.
