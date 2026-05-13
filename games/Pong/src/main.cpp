@@ -10,7 +10,7 @@
 #include <cstdio>
 
 int main() {
-    std::printf("Pong — engine %s, platform %s\n",
+    std::printf("Pong - engine %s, platform %s\n",
                 engine::version(), platform::version());
     return 0;
 }
