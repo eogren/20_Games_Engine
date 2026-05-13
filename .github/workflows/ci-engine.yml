@@ -63,7 +63,10 @@ jobs:
         if: steps.cache-vulkan.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/VulkanSDK-$env:VULKAN_VERSION-Installer.exe"
+          # LunarG serves the Windows installer at /<version>/windows/vulkan_sdk.exe
+          # (the literal filename, not VulkanSDK-<version>-Installer.exe — that path
+          # 404s). Same file is also reachable at /latest/windows/vulkan_sdk.exe.
+          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkan_sdk.exe"
           $installer = "$env:RUNNER_TEMP\vulkan-sdk-installer.exe"
           Write-Host "Downloading Vulkan SDK $env:VULKAN_VERSION from $url"
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
