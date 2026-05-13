@@ -67,6 +67,14 @@ if(MSVC)
         # Warnings
         /W4
         /WX
+        # External-header posture. CMake's SYSTEM include keyword maps
+        # to /external:I on MSVC 16.10+, so headers reached via SYSTEM
+        # (volk, vma, spdlog, doctest) get marked external. /external:W0
+        # silences regular warnings inside them — third-party warnings
+        # are not ours to fix, and /WX would otherwise turn them into
+        # build failures (e.g. spdlog/fmt's bundled base.h trips C6239
+        # under /analyze).
+        /external:W0
         # Conformance — the MSVC defaults predate C++17.
         /permissive-       # strict standard name lookup, two-phase template lookup, etc.
         /Zc:preprocessor   # conforming preprocessor (legacy MSVC one mangles __VA_ARGS__)
@@ -87,9 +95,15 @@ if(MSVC)
 
     if(ENGINE_ENABLE_MSVC_ANALYZE)
         # Treat /analyze warnings (C6xxx) as errors via the /WX already
-        # set above. If a false positive surfaces, prefer a localized
-        # /wd6XXX or a __pragma annotation over weakening the lane.
-        target_compile_options(engine_compile_options INTERFACE /analyze)
+        # set above. If a false positive surfaces in our code, prefer a
+        # localized /wd6XXX or a __pragma annotation over weakening the
+        # lane. /analyze:external- skips analysis of third-party headers
+        # marked via /external:I (CMake SYSTEM include dirs) — their
+        # warnings aren't ours to fix.
+        target_compile_options(engine_compile_options INTERFACE
+            /analyze
+            /analyze:external-
+        )
     endif()
 endif()
 

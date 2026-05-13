@@ -25,11 +25,10 @@ namespace engine::log
         // path's parent doesn't exist it throws. We let that propagate
         // — startup logging failure should surface loudly, not be
         // silently routed only to the debugger sink.
-        sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            cfg.file_path.string(), cfg.max_file_bytes, cfg.max_files));
+        sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(cfg.file_path.string(),
+                                                                               cfg.max_file_bytes, cfg.max_files));
 
-        auto logger = std::make_shared<spdlog::logger>(
-            "engine", sinks.begin(), sinks.end());
+        auto logger = std::make_shared<spdlog::logger>("engine", sinks.begin(), sinks.end());
 
         logger->set_level(cfg.level);
 

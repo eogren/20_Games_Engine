@@ -16,10 +16,8 @@ TEST_CASE("engine::log::init installs a default logger and accepts log calls")
     const auto log_path = std::filesystem::temp_directory_path() / "engine_log_test.log";
     std::filesystem::remove(log_path);
 
-    engine::log::init({.file_path = log_path,
-                       .max_file_bytes = 64u * 1024u,
-                       .max_files = 2,
-                       .level = spdlog::level::trace});
+    engine::log::init(
+        {.file_path = log_path, .max_file_bytes = 64u * 1024u, .max_files = 2, .level = spdlog::level::trace});
 
     REQUIRE(spdlog::default_logger() != nullptr);
     CHECK(spdlog::default_logger()->name() == "engine");
