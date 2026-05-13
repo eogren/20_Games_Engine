@@ -8,7 +8,8 @@
 
 #include <cstring>
 
-TEST_CASE("engine::version returns a non-empty string") {
+TEST_CASE("engine::version returns a non-empty string")
+{
     const char* v = engine::version();
     REQUIRE(v != nullptr);
     REQUIRE(std::strlen(v) > 0);
