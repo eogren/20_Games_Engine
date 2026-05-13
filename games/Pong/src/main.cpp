@@ -7,6 +7,8 @@
 #include "engine.h"
 #include "log/Log.h"
 #include "platform.h"
+#include "win32/platform.h"
+#include "win32/win32_check.h"
 
 #include <spdlog/spdlog.h>
 
@@ -23,6 +25,7 @@ int main()
         "VK_KHR_win32_surface",
     };
 
+    platform::win32::Platform host{"Pong"};
     engine::Engine eng;
     if (auto r = eng.initRenderer("Pong", kPlatformExtensions); !r)
     {

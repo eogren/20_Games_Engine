@@ -42,8 +42,14 @@ namespace engine
         std::expected<void, VkResult> bindSurface(VkSurfaceKHR surface, VkExtent2D extent);
 
         // Valid only after bindSurface() succeeds.
-        renderer::Renderer& renderer() { return *renderer_; }
-        const renderer::Renderer& renderer() const { return *renderer_; }
+        renderer::Renderer& renderer()
+        {
+            return *renderer_;
+        }
+        const renderer::Renderer& renderer() const
+        {
+            return *renderer_;
+        }
 
     private:
         // Exactly one of these is engaged at a time after initRenderer():

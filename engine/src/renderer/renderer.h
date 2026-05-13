@@ -44,10 +44,15 @@ namespace renderer
         std::expected<Renderer, VkResult> bindSurface(VkSurfaceKHR surface, VkExtent2D extent) &&;
 
     private:
-        explicit RendererInstance(VkInstance instance) noexcept : instance_(instance)
+        RendererInstance(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger) noexcept
+            : instance_(instance), debugMessenger_(debugMessenger)
         {
         }
         VkInstance instance_ = VK_NULL_HANDLE;
+        // Routes Vulkan validation/perf messages to spdlog. VK_NULL_HANDLE in
+        // release builds (extension not requested). Must be destroyed before
+        // instance_.
+        VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE;
     };
 
     // Phase 2: bound to a surface, ready to draw.
@@ -69,20 +74,11 @@ namespace renderer
         // draw API lands here.
 
     private:
-        Renderer(VkInstance instance,
-                 VkSurfaceKHR surface,
-                 VkPhysicalDevice physicalDevice,
-                 VkDevice device,
-                 VkQueue graphicsQueue,
-                 uint32_t graphicsQueueIdx,
+        Renderer(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, VkSurfaceKHR surface,
+                 VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, uint32_t graphicsQueueIdx,
                  VkExtent2D extent) noexcept
-            : instance_(instance),
-              surface_(surface),
-              physicalDevice_(physicalDevice),
-              device_(device),
-              graphicsQueue_(graphicsQueue),
-              graphicsQueueIdx_(graphicsQueueIdx),
-              extent_(extent)
+            : instance_(instance), debugMessenger_(debugMessenger), surface_(surface), physicalDevice_(physicalDevice),
+              device_(device), graphicsQueue_(graphicsQueue), graphicsQueueIdx_(graphicsQueueIdx), extent_(extent)
         {
         }
 
@@ -91,6 +87,7 @@ namespace renderer
         void destroy_() noexcept;
 
         VkInstance instance_ = VK_NULL_HANDLE;
+        VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE; // VK_NULL_HANDLE in release
         VkSurfaceKHR surface_ = VK_NULL_HANDLE;
         VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE; // not owned (lifetime tied to instance)
         VkDevice device_ = VK_NULL_HANDLE;

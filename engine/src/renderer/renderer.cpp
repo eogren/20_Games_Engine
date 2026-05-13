@@ -1,6 +1,7 @@
 #include "renderer/renderer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <expected>
 #include <optional>
 #include <span>
@@ -41,7 +42,46 @@ namespace
         return exts;
     }
 
-    enum class DeviceSelectError
+    VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+                                                       VkDebugUtilsMessageTypeFlagsEXT types,
+                                                       const VkDebugUtilsMessengerCallbackDataEXT* data,
+                                                       void* /*userData*/)
+    {
+        spdlog::level::level_enum level = spdlog::level::info;
+        switch (severity)
+        {
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+            level = spdlog::level::trace;
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+            level = spdlog::level::info;
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+            level = spdlog::level::warn;
+            break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+            level = spdlog::level::err;
+            break;
+        default:
+            break;
+        }
+
+        // Type is a flag mask; pick the most specific tag in priority order
+        // so the log prefix tells you whether to blame your code (validation),
+        // your usage pattern (performance), or the loader (general).
+        const char* tag = "general";
+        if (types & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+            tag = "validation";
+        else if (types & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
+            tag = "performance";
+
+        spdlog::log(level, "[vulkan/{}] {}", tag, data->pMessage);
+        // VK_FALSE so the triggering API call still proceeds — VK_TRUE is for
+        // fuzz harnesses that want to abort the offending call.
+        return VK_FALSE;
+    }
+
+    enum class DeviceSelectError : std::uint8_t
     {
         // vkEnumeratePhysicalDevices returned a non-success VkResult. The
         // underlying code is logged at the call site; not preserved in the
@@ -108,8 +148,6 @@ namespace
             typeBonus = 1;
             break;
         case VK_PHYSICAL_DEVICE_TYPE_OTHER:
-            typeBonus = 0;
-            break;
         default:
             typeBonus = 0;
             break;
@@ -211,24 +249,32 @@ namespace renderer
 {
     // ---- RendererInstance --------------------------------------------------
 
-    RendererInstance::RendererInstance(RendererInstance&& other) noexcept : instance_(other.instance_)
+    RendererInstance::RendererInstance(RendererInstance&& other) noexcept
+        : instance_(other.instance_), debugMessenger_(other.debugMessenger_)
     {
         other.instance_ = VK_NULL_HANDLE;
+        other.debugMessenger_ = VK_NULL_HANDLE;
     }
 
     RendererInstance& RendererInstance::operator=(RendererInstance&& other) noexcept
     {
         if (this != &other)
         {
+            // Messenger before instance — vkDestroyDebugUtilsMessengerEXT
+            // needs the instance live.
+            if (debugMessenger_ != VK_NULL_HANDLE) vkDestroyDebugUtilsMessengerEXT(instance_, debugMessenger_, nullptr);
             if (instance_ != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
             instance_ = other.instance_;
+            debugMessenger_ = other.debugMessenger_;
             other.instance_ = VK_NULL_HANDLE;
+            other.debugMessenger_ = VK_NULL_HANDLE;
         }
         return *this;
     }
 
     RendererInstance::~RendererInstance()
     {
+        if (debugMessenger_ != VK_NULL_HANDLE) vkDestroyDebugUtilsMessengerEXT(instance_, debugMessenger_, nullptr);
         if (instance_ != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
     }
 
@@ -275,8 +321,29 @@ namespace renderer
             .apiVersion = VK_API_VERSION_1_3,
         };
 
+#ifndef NDEBUG
+        // Used twice: as pNext on VkInstanceCreateInfo (so the temporary
+        // messenger catches messages emitted by vkCreateInstance /
+        // vkDestroyInstance themselves) and as the create-info for the
+        // persistent messenger below. Severity is warning+error by default —
+        // verbose/info from validation are extremely chatty and rarely
+        // actionable. Flip bits here to crank up.
+        VkDebugUtilsMessengerCreateInfoEXT debugCI{
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity =
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = vulkanDebugCallback,
+        };
+#endif
+
         const VkInstanceCreateInfo ci{
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+#ifndef NDEBUG
+            .pNext = &debugCI,
+#endif
             .pApplicationInfo = &appInfo,
             .enabledLayerCount = static_cast<uint32_t>(layers.size()),
             .ppEnabledLayerNames = layers.data(),
@@ -296,7 +363,18 @@ namespace renderer
         // vkCreateDevice — catches "forgot step 3" bugs at call time.
         volkLoadInstanceOnly(instance);
 
-        return RendererInstance(instance);
+        VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+#ifndef NDEBUG
+        if (const VkResult r = vkCreateDebugUtilsMessengerEXT(instance, &debugCI, nullptr, &debugMessenger);
+            r != VK_SUCCESS)
+        {
+            spdlog::error("[vulkan] vkCreateDebugUtilsMessengerEXT failed: {}", vkResultString(r));
+            vkDestroyInstance(instance, nullptr);
+            return std::unexpected(r);
+        }
+#endif
+
+        return RendererInstance(instance, debugMessenger);
     }
 
     std::expected<Renderer, VkResult> RendererInstance::bindSurface(VkSurfaceKHR surface, VkExtent2D extent) &&
@@ -328,8 +406,11 @@ namespace renderer
         vkGetDeviceQueue(*logicalDevice, physicalDevice->graphicsQueueIdx, 0, &graphicsQueue);
 
         const VkInstance instance = instance_;
-        instance_ = VK_NULL_HANDLE; // disarm — Renderer owns the instance now
-        return Renderer(instance, surface, physicalDevice->device, *logicalDevice, graphicsQueue,
+        const VkDebugUtilsMessengerEXT debugMessenger = debugMessenger_;
+        // disarm — Renderer owns the instance + messenger now
+        instance_ = VK_NULL_HANDLE;
+        debugMessenger_ = VK_NULL_HANDLE;
+        return Renderer(instance, debugMessenger, surface, physicalDevice->device, *logicalDevice, graphicsQueue,
                         physicalDevice->graphicsQueueIdx, extent);
     }
 
@@ -337,25 +418,32 @@ namespace renderer
 
     void Renderer::destroy_() noexcept
     {
-        // Dependency order: device-owned resources -> device -> surface -> instance.
-        // (Queue/physical-device handles aren't destroyed — their lifetimes are
-        // tied to device and instance respectively.)
+        // Dependency order: device-owned resources -> device -> surface ->
+        // debug messenger -> instance. Messenger and surface both depend only
+        // on the instance; messenger is destroyed last (just before the
+        // instance) so validation messages emitted during device/surface
+        // teardown still flow through our callback.
+        // (Queue/physical-device handles aren't destroyed — their lifetimes
+        // are tied to device and instance respectively.)
         if (device_ != VK_NULL_HANDLE) vkDestroyDevice(device_, nullptr);
         if (surface_ != VK_NULL_HANDLE) vkDestroySurfaceKHR(instance_, surface_, nullptr);
+        if (debugMessenger_ != VK_NULL_HANDLE) vkDestroyDebugUtilsMessengerEXT(instance_, debugMessenger_, nullptr);
         if (instance_ != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
         device_ = VK_NULL_HANDLE;
         surface_ = VK_NULL_HANDLE;
+        debugMessenger_ = VK_NULL_HANDLE;
         instance_ = VK_NULL_HANDLE;
         physicalDevice_ = VK_NULL_HANDLE;
         graphicsQueue_ = VK_NULL_HANDLE;
     }
 
     Renderer::Renderer(Renderer&& other) noexcept
-        : instance_(other.instance_), surface_(other.surface_), physicalDevice_(other.physicalDevice_),
-          device_(other.device_), graphicsQueue_(other.graphicsQueue_), graphicsQueueIdx_(other.graphicsQueueIdx_),
-          extent_(other.extent_)
+        : instance_(other.instance_), debugMessenger_(other.debugMessenger_), surface_(other.surface_),
+          physicalDevice_(other.physicalDevice_), device_(other.device_), graphicsQueue_(other.graphicsQueue_),
+          graphicsQueueIdx_(other.graphicsQueueIdx_), extent_(other.extent_)
     {
         other.instance_ = VK_NULL_HANDLE;
+        other.debugMessenger_ = VK_NULL_HANDLE;
         other.surface_ = VK_NULL_HANDLE;
         other.physicalDevice_ = VK_NULL_HANDLE;
         other.device_ = VK_NULL_HANDLE;
@@ -368,6 +456,7 @@ namespace renderer
         {
             destroy_();
             instance_ = other.instance_;
+            debugMessenger_ = other.debugMessenger_;
             surface_ = other.surface_;
             physicalDevice_ = other.physicalDevice_;
             device_ = other.device_;
@@ -375,6 +464,7 @@ namespace renderer
             graphicsQueueIdx_ = other.graphicsQueueIdx_;
             extent_ = other.extent_;
             other.instance_ = VK_NULL_HANDLE;
+            other.debugMessenger_ = VK_NULL_HANDLE;
             other.surface_ = VK_NULL_HANDLE;
             other.physicalDevice_ = VK_NULL_HANDLE;
             other.device_ = VK_NULL_HANDLE;
