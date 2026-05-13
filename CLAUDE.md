@@ -88,7 +88,7 @@ gh pr create
 
 Trivial doc edits (a `TASKS.md` checkbox flip, a typo fix) can go direct to `main`. Anything that touches code, the build graph, or the test suite goes through a PR.
 
-**Running builds and tests.** `./build.ps1` at the repo root is the canonical entry. It locates the Visual Studio install via `vswhere`, enters the MSVC dev shell only if `cl.exe` isn't already on PATH (so re-runs in the same session are cheap), and runs configure + build + test against a preset:
+**Running builds and tests.** `./build.ps1` at the repo root is the canonical entry — it loads the MSVC dev environment (idempotent within a session) and runs configure + build + test against a preset:
 
 ```
 ./build.ps1                                # configure + build + test, debug preset
@@ -96,9 +96,7 @@ Trivial doc edits (a `TASKS.md` checkbox flip, a typo fix) can go direct to `mai
 ./build.ps1 -Preset debug -Target build    # one step only: configure|build|test|all
 ```
 
-Why the wrapper exists: MSVC needs `cl.exe`, `INCLUDE`, `LIB`, etc. in the environment before CMake can configure. The VS "Developer Command Prompt" *does* this but truncates `PATH` at cmd's 2047-char limit, silently dropping user-PATH tools like `clang-tidy` and `claude`. `Enter-VsDevShell` (which `build.ps1` uses) appends instead of replacing, so the rest of the shell's PATH survives. Only the **configure** step needs the dev env at all — once a build dir is configured, raw `cmake --build` / `ctest` from any shell work fine.
-
-Direct CMake invocation against the presets in `CMakePresets.json` is the fallback if `build.ps1` is in the way:
+Direct CMake invocation against the presets in `CMakePresets.json` is the fallback (must be run from an MSVC dev shell):
 
 ```
 cmake --preset debug
