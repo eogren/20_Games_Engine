@@ -38,6 +38,12 @@ target_link_libraries(engine PUBLIC volk vma)
 
 # ---- Tests ----------------------------------------------------------
 
-add_executable(engine_tests tests/smoke_test.cpp)
+# smoke_test.cpp defines doctest's main (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN).
+# Additional test TUs in this exe just #include "doctest.h" — defining the
+# implementation macro in more than one TU breaks the link.
+add_executable(engine_tests
+    tests/smoke_test.cpp
+    tests/MathTests.cpp
+)
 target_link_libraries(engine_tests PRIVATE engine doctest)
 add_test(NAME engine_tests COMMAND engine_tests)

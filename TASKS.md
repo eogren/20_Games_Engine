@@ -16,10 +16,13 @@ Next steps below. (2) and (3) are independent and can move in parallel;
 (4) is where they meet. (1) has no Vulkan/Win32 surface so it's a safe
 warm-up at any point.
 
-- [ ] **Port `cpp/src/math/` into `engine/src/math/`.** First portable
-  substrate that survives the pivot intact. Pure C++, no Vulkan or
-  Win32 — fast warm-up, doctest tests carry over from
-  `cpp/tests/MathTests.cpp`.
+- [x] **Port `cpp/src/math/` into `engine/src/math/`.** `Angle` and
+  `math_literals` ported as-is (now under `namespace engine`); the
+  `ortho_rh` and `model_ts` helpers were dropped — GLM has direct
+  equivalents (`glm::orthoRH_ZO`, `glm::translate`/`glm::scale`) and
+  there's no caller in the new tree yet to design a wrapper around.
+  The renderer port will pick an ortho shape (incl. Vulkan Y-flip
+  handling) in context.
 - [ ] **First Volk init + `VkInstance` creation** in engine. Proves
   the Vulkan SDK + Volk loader chain works end-to-end without needing
   a window. `vulkaninfo`-equivalent output is enough confirmation.
