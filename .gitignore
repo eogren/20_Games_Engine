@@ -4,6 +4,7 @@
 # CMake / Ninja build dirs.
 build/
 build-*/
+cmake-build-*/
 
 # Xcode (cpp/ still uses the Xcode generator on macOS)
 DerivedData/
