@@ -6,6 +6,11 @@ build/
 build-*/
 cmake-build-*/
 
+# clangd: mirrored from build/debug/ by build.ps1 for tools that don't read .clangd
+compile_commands.json
+# clangd's on-disk index
+.cache/
+
 # Xcode (cpp/ still uses the Xcode generator on macOS)
 DerivedData/
 xcuserdata/

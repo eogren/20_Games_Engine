@@ -1,0 +1,10 @@
+# Points clangd at the debug preset's compile_commands.json. Without this,
+# clangd searches upward from each source file, finds nothing at the repo
+# root, and falls back to guessed flags — which produces spurious
+# "unknown type / header not found" diagnostics.
+#
+# build.ps1 also mirrors the same file to the repo root after `configure`
+# for tools that read compile_commands.json directly instead of .clangd.
+
+CompileFlags:
+  CompilationDatabase: build/debug
