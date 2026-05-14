@@ -578,8 +578,7 @@ namespace renderer
         }
         else
         {
-            chosenExtent.width =
-                std::clamp(windowExtent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
+            chosenExtent.width = std::clamp(windowExtent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
             chosenExtent.height =
                 std::clamp(windowExtent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
         }
