@@ -23,6 +23,6 @@ int main()
         return 1;
     }
 
-    platform.GameLoop();
+    eng.run();
     return 0;
 }

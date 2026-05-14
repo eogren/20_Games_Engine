@@ -30,6 +30,11 @@ namespace engine
 
         std::expected<void, VkResult> initRenderer(const std::string& appName);
 
+        // Per-frame loop. Returns when the platform reports it's time to exit.
+        // Frame ordering (see CLAUDE.md > "Frame ordering"): pollEvents at the
+        // top; renderer begin/end and game/input land as those layers do.
+        void run();
+
         // Valid only after initRenderer() succeeds.
         renderer::Renderer& renderer()
         {
