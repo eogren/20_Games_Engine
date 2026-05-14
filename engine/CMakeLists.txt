@@ -2,7 +2,9 @@
 # here; platform/ owns OS divergence (window, message pump, surface).
 #
 # See CLAUDE.md > "Layer split" for the direction-of-deps rule:
-# engine never imports platform.
+# engine depends on platform (one-way). The link is PRIVATE because
+# engine.h only forward-declares platform::Platform — the include of
+# platform/surface.h sits in engine.cpp.
 
 # ---- Third-party libs (vendored under third_party/) -----------------
 #
@@ -15,6 +17,12 @@
 add_library(volk STATIC third_party/volk/volk.c)
 target_include_directories(volk SYSTEM PUBLIC third_party/volk)
 target_link_libraries(volk PUBLIC Vulkan::Headers)
+# Enable platform-specific Vulkan declarations (vkCreateWin32SurfaceKHR etc.) in
+# both volk.c (where the function-pointer storage is allocated) and consumers
+# (where the declarations are needed). PUBLIC so the define propagates.
+if(WIN32)
+    target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+endif()
 
 # VMA — Vulkan Memory Allocator. Header-only at use-site; one TU in
 # engine defines VMA_IMPLEMENTATION when VMA actually starts getting used.
@@ -38,7 +46,11 @@ add_library(engine STATIC
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine
     PUBLIC  volk vma spdlog::spdlog
-    PRIVATE engine_compile_options  # /W4 /WX /permissive- + sanitizers — see root CMakeLists.txt.
+    # platform is referenced by name here even though add_subdirectory(platform)
+    # runs after add_subdirectory(engine) in the root CMakeLists. CMake's
+    # target_link_libraries resolves at generation time, so the forward
+    # reference is fine.
+    PRIVATE engine_compile_options platform
 )
 
 # ---- Tests ----------------------------------------------------------

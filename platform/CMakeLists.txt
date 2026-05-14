@@ -1,15 +1,23 @@
 # platform — OS-divergence layer. Owns the Win32 window + message pump
-# and the single vkCreateWin32SurfaceKHR call. Depends on engine; engine
-# never imports platform (see CLAUDE.md > "Layer split").
+# and the single vkCreateWin32SurfaceKHR call. Engine depends on platform
+# (one-way; see CLAUDE.md > "Layer split"). Platform itself only needs
+# volk because surface.h speaks VkSurfaceKHR / VkInstance.
 
 add_library(platform STATIC
         src/platform.cpp
-        src/win32/window.cpp
+        src/win32/platform_win32.cpp
+        src/win32/surface_win32.cpp
 )
-target_include_directories(platform PUBLIC src)
+target_include_directories(platform
+        PUBLIC include
+        PRIVATE src src/win32
+)
 target_link_libraries(platform
-        PUBLIC engine
-        PRIVATE engine_compile_options
+        # volk is PUBLIC because surface.h speaks VkSurfaceKHR / VkInstance to
+        # callers. spdlog is PRIVATE — platform uses it only inside
+        # win32_check.h (WIN32_CHECK / win32CheckFail) for internal logging.
+        PUBLIC volk
+        PRIVATE engine_compile_options spdlog::spdlog
 )
 
 # Win32-specific link bits (user32, gdi32) land here once the window /

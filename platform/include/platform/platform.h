@@ -1,0 +1,51 @@
+#pragma once
+
+#include <memory>
+#include <string_view>
+
+namespace platform
+{
+    // Backend internals, defined in src/ alongside the active backend's Impl.
+    // Forward-declared here so Platform can friend it without leaking native
+    // window or Vulkan types into this header.
+    struct PlatformInternals;
+
+    /**
+     * OS-portable platform service: window, event pump, lifecycle.
+     *
+     * The concrete backend (Win32 today; iOS later via MoltenVK) lives entirely
+     * under src/. This header intentionally pulls neither <windows.h> nor any
+     * Vulkan header, so engine TUs that only need the cross-platform interface
+     * pay no transitive include cost. Surface creation is a separate free
+     * function in <platform/surface.h>.
+     */
+    class Platform
+    {
+    public:
+        // Forward decl only — full definition lives in src/<backend>/platform_impl.h.
+        // Naming Platform::Impl is harmless without the definition; access to impl_
+        // still requires going through PlatformInternals (friend).
+        struct Impl;
+
+        explicit Platform(std::string_view windowName);
+        ~Platform();
+
+        Platform(const Platform&) = delete;
+        Platform& operator=(const Platform&) = delete;
+        Platform(Platform&&) = delete;
+        Platform& operator=(Platform&&) = delete;
+
+        // Drives the OS message pump until the user closes the window.
+        // Temporary shape — splits into pollEvents() + shouldClose() once the
+        // engine owns the per-frame loop.
+        void GameLoop();
+
+    private:
+        std::unique_ptr<Impl> impl_;
+
+        friend struct PlatformInternals;
+    };
+
+    const char* version();
+
+} // namespace platform

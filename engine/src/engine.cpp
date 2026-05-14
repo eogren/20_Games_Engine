@@ -1,5 +1,7 @@
 #include "engine.h"
 
+#include "platform/surface.h"
+
 namespace engine
 {
 
@@ -8,24 +10,25 @@ namespace engine
         return "0.0.1";
     }
 
-    std::expected<VkInstance, VkResult> Engine::initRenderer(const std::string& appName,
-                                                             std::span<const char* const> platformExtensions)
+    std::expected<void, VkResult> Engine::initRenderer(const std::string& appName)
     {
-        auto r = renderer::RendererInstance::create(appName, platformExtensions);
-        if (!r) return std::unexpected(r.error());
-        rendererInstance_.emplace(std::move(*r));
-        return rendererInstance_->instance();
-    }
+        // Each intermediate is a local: RAII unwinds cleanly on early return.
+        // RendererInstance's dtor destroys the VkInstance; RendererInstance::
+        // bindSurface either consumes the surface into the Renderer or
+        // destroys it on failure, so we never have to vkDestroySurfaceKHR
+        // by hand here.
+        auto rInst = renderer::RendererInstance::create(appName, platform::requiredInstanceExtensions());
+        if (!rInst) return std::unexpected(rInst.error());
 
-    std::expected<void, VkResult> Engine::bindSurface(VkSurfaceKHR surface, VkExtent2D extent)
-    {
-        auto result = std::move(*rendererInstance_).bindSurface(surface, extent);
-        // RendererInstance is consumed regardless. On success bindSurface
-        // disarmed it; on failure its dtor still owns the VkInstance and
-        // reset() destroys it correctly.
-        rendererInstance_.reset();
-        if (!result) return std::unexpected(result.error());
-        renderer_.emplace(std::move(*result));
+        auto surface = platform::createSurface(rInst->instance(), platform_);
+        if (!surface) return std::unexpected(surface.error());
+
+        const VkExtent2D extent = platform::framebufferExtent(platform_);
+
+        auto rend = std::move(*rInst).bindSurface(*surface, extent);
+        if (!rend) return std::unexpected(rend.error());
+
+        renderer_.emplace(std::move(*rend));
         return {};
     }
 

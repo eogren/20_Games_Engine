@@ -6,4 +6,8 @@
 add_executable(Pong
     src/main.cpp
 )
-target_link_libraries(Pong PRIVATE platform engine_compile_options)
+# Pong sees both engine and platform directly: it constructs a Platform,
+# hands it to Engine, then runs the loop. The dep on platform used to be
+# transitive (when platform PUBLIC-linked engine); after the flip to
+# engine -> platform, Pong has to name both explicitly.
+target_link_libraries(Pong PRIVATE engine platform engine_compile_options)
