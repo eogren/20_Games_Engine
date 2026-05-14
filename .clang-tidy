@@ -45,7 +45,8 @@ Checks: >
   -bugprone-exception-escape,
   -bugprone-implicit-widening-of-multiplication-result,
   -cppcoreguidelines-narrowing-conversions,
-  -clang-analyzer-optin.core.EnumCastOutOfRange
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -clang-diagnostic-missing-designated-field-initializers
 
 # Local and CI alike fail on any reported diagnostic. Filter noisy checks
 # in Checks: above rather than letting warnings pile up.
