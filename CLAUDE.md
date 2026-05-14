@@ -115,13 +115,13 @@ ctest --preset debug
 
 Presets: `debug`, `release`, `relwithdebinfo`, `asan` (MSVC `/fsanitize=address`), `ubsan` (clang-cl, `-fsanitize=undefined`), `analyze` (MSVC `/analyze` static analysis — slow, separate CI lane). Per-package `test.sh` wrappers land alongside the directories they belong to as the test suites grow.
 
-## Current state (2026-05-13)
+## Current state (2026-05-14)
 
-Scaffolding is in place; no real engine surface area yet.
+Vulkan renderer setup is complete; no frame ops yet (next PR wires `beginFrame`/`endFrame` for clear + present).
 
-- `engine/` has a skeletal `engine::version()` entry point, the math substrate (`Angle` plus `_deg` / `_rad` literals, ported from `cpp/math/`) under `engine/src/math/`, doctest-based math tests, and vendored third-party headers for volk, VMA, and doctest under `engine/third_party/`.
-- `platform/` has a skeletal `platform::version()`. No window, no message pump, no Vulkan surface creation yet.
-- `games/Pong/` has a `main.cpp` that prints both version strings — proves engine + platform link into an executable. No game loop yet.
-- Build infra: `CMakePresets.json` with debug/release/relwithdebinfo plus asan/ubsan/analyze sanitizer lanes; clang-format + clang-tidy wired up against the new tree; CI runs the matrix.
+- `engine/` has the math substrate (`Angle` + `_deg`/`_rad` literals under `engine/src/math/`), spdlog-based logging with MSVC + rotating-file sinks, and a two-phase Vulkan renderer (`RendererInstance` → `Renderer`) under `engine/src/renderer/`. Phase 1 (`RendererInstance::create`) owns the VkInstance + debug messenger. Phase 2 (`bindSurface`) consumes a platform-provided surface and stands up: physical+logical device pick, graphics queue, per-frame fence + imageAcquired semaphore (`MAX_FRAMES_IN_FLIGHT`), command pool + per-frame primary buffers, and a resize-ready swapchain (`recreateSwapchain_` handles both initial build and future `VK_ERROR_OUT_OF_DATE_KHR` recovery; per-image renderComplete semaphores are rebuilt with it). Setup helpers + `RendererInstance` + `recreateSwapchain_` live in `renderer_init.cpp`; `renderer.cpp` holds the `Renderer` lifetime and is where the frame API will land. Vendored third-party headers (volk, VMA, doctest) live under `engine/third_party/`.
+- `platform/` (Win32): `CreateWindowExW` + `WNDCLASSEXW` window creation, `PeekMessageW`/`DispatchMessageW` pump exposed as `pollEvents()` / `shouldClose()`, surface creation via `vkCreateWin32SurfaceKHR`, framebuffer extent query.
+- `games/Pong/main.cpp` constructs a `Platform`, hands it to `Engine`, calls `initRenderer` and `run`. No game logic yet.
+- Build infra: `CMakePresets.json` with debug/release/relwithdebinfo + asan/ubsan/analyze sanitizer lanes; clang-format + clang-tidy wired against the new tree; CI runs the matrix. `.clangd` points at `build/debug`'s `compile_commands.json` (and `build.ps1` mirrors that file to the repo root for tools that don't read `.clangd`). spdlog rebuilds under `/fsanitize=address` when ASan is enabled to dodge the MSVC STL annotation-sentinel LNK2038.
 
 The legacy `cpp/` tree (Metal + Objective-C++) remains as transitional reference for math and game shapes still to port; it gets removed once nothing's left to mine from it. `cpp/` is not being revived against Vulkan; the new code lives in `engine/`.
