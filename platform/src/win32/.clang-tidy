@@ -1,0 +1,8 @@
+# Vulkan struct idioms suppressed in this subtree only (surface_win32.cpp
+# constructs VkWin32SurfaceCreateInfoKHR). See engine/src/renderer/.clang-tidy
+# for the rationale.
+
+InheritParentConfig: true
+Checks: >
+  -clang-diagnostic-missing-designated-field-initializers,
+  -bugprone-invalid-enum-default-initialization
