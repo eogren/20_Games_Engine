@@ -52,6 +52,21 @@ ctest --test-dir build
 Renderer pixel-readback tests skip on machines without a working
 Vulkan ICD so the rest of the suite stays runnable.
 
+## Git hooks
+
+Versioned hooks live under `.githooks/`. Point your clone at them once:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+- **pre-commit** runs `./format.ps1` (clang-format check).
+- **pre-push** runs `./lint.ps1` (clang-tidy against the `debug` preset's
+  compile DB; configures it on first run if missing).
+
+Both invoke `pwsh`, so PowerShell 7+ must be on `PATH`. Bypass either
+with `--no-verify` when you need to.
+
 ## Status
 
 Mid-pivot from an Apple-only Metal engine to the stack above. `engine/`,

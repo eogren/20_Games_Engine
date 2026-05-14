@@ -1,0 +1,4 @@
+#!/bin/sh
+# Reject commits whose tracked C++ source isn't clang-format-clean.
+# Bypass with `git commit --no-verify` when needed.
+exec pwsh -NoProfile -ExecutionPolicy Bypass -File ./format.ps1
