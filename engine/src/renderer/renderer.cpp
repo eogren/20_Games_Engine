@@ -407,28 +407,46 @@ namespace renderer
 
         const VkInstance instance = instance_;
         const VkDebugUtilsMessengerEXT debugMessenger = debugMessenger_;
-        // disarm — Renderer owns the instance + messenger now
+        // disarm — the new Renderer owns the instance + messenger now. Do this
+        // before constructing the Renderer so that if recreateSwapchain_ fails,
+        // its dtor cleans up *all* the bound state (instance included) — the
+        // "lose both phases on failure" policy stays whole.
         instance_ = VK_NULL_HANDLE;
         debugMessenger_ = VK_NULL_HANDLE;
-        return Renderer(instance, debugMessenger, surface, physicalDevice->device, *logicalDevice, graphicsQueue,
-                        physicalDevice->graphicsQueueIdx, extent);
+        Renderer renderer(instance, debugMessenger, surface, physicalDevice->device, *logicalDevice, graphicsQueue,
+                          physicalDevice->graphicsQueueIdx, extent);
+        if (auto r = renderer.recreateSwapchain_(extent); !r) return std::unexpected(r.error());
+        return renderer;
     }
 
     // ---- Renderer ----------------------------------------------------------
 
     void Renderer::destroy_() noexcept
     {
-        // Dependency order: device-owned resources -> device -> surface ->
-        // debug messenger -> instance. Messenger and surface both depend only
-        // on the instance; messenger is destroyed last (just before the
-        // instance) so validation messages emitted during device/surface
-        // teardown still flow through our callback.
+        // Dependency order: image views -> swapchain -> device -> surface ->
+        // debug messenger -> instance. Views reference swapchain images; the
+        // swapchain owns those images; both live on the device. Messenger and
+        // surface both depend only on the instance; messenger is destroyed
+        // last (just before the instance) so validation messages emitted
+        // during device/surface teardown still flow through our callback.
         // (Queue/physical-device handles aren't destroyed — their lifetimes
-        // are tied to device and instance respectively.)
+        // are tied to device and instance respectively. Swapchain images
+        // aren't destroyed directly either; vkDestroySwapchainKHR releases
+        // them.)
+        for (VkImageView v : swapchainImageViews_)
+        {
+            // vkDestroyImageView accepts VK_NULL_HANDLE as a no-op, so partial
+            // image-view creation failures don't need a special path here.
+            if (v != VK_NULL_HANDLE) vkDestroyImageView(device_, v, nullptr);
+        }
+        swapchainImageViews_.clear();
+        swapchainImages_.clear();
+        if (swapchain_ != VK_NULL_HANDLE) vkDestroySwapchainKHR(device_, swapchain_, nullptr);
         if (device_ != VK_NULL_HANDLE) vkDestroyDevice(device_, nullptr);
         if (surface_ != VK_NULL_HANDLE) vkDestroySurfaceKHR(instance_, surface_, nullptr);
         if (debugMessenger_ != VK_NULL_HANDLE) vkDestroyDebugUtilsMessengerEXT(instance_, debugMessenger_, nullptr);
         if (instance_ != VK_NULL_HANDLE) vkDestroyInstance(instance_, nullptr);
+        swapchain_ = VK_NULL_HANDLE;
         device_ = VK_NULL_HANDLE;
         surface_ = VK_NULL_HANDLE;
         debugMessenger_ = VK_NULL_HANDLE;
@@ -440,7 +458,9 @@ namespace renderer
     Renderer::Renderer(Renderer&& other) noexcept
         : instance_(other.instance_), debugMessenger_(other.debugMessenger_), surface_(other.surface_),
           physicalDevice_(other.physicalDevice_), device_(other.device_), graphicsQueue_(other.graphicsQueue_),
-          graphicsQueueIdx_(other.graphicsQueueIdx_), extent_(other.extent_)
+          graphicsQueueIdx_(other.graphicsQueueIdx_), extent_(other.extent_), swapchain_(other.swapchain_),
+          swapchainFormat_(other.swapchainFormat_), swapchainImages_(std::move(other.swapchainImages_)),
+          swapchainImageViews_(std::move(other.swapchainImageViews_))
     {
         other.instance_ = VK_NULL_HANDLE;
         other.debugMessenger_ = VK_NULL_HANDLE;
@@ -448,6 +468,8 @@ namespace renderer
         other.physicalDevice_ = VK_NULL_HANDLE;
         other.device_ = VK_NULL_HANDLE;
         other.graphicsQueue_ = VK_NULL_HANDLE;
+        other.swapchain_ = VK_NULL_HANDLE;
+        // swapchainImages_ / swapchainImageViews_: vector move leaves source empty.
     }
 
     Renderer& Renderer::operator=(Renderer&& other) noexcept
@@ -463,12 +485,17 @@ namespace renderer
             graphicsQueue_ = other.graphicsQueue_;
             graphicsQueueIdx_ = other.graphicsQueueIdx_;
             extent_ = other.extent_;
+            swapchain_ = other.swapchain_;
+            swapchainFormat_ = other.swapchainFormat_;
+            swapchainImages_ = std::move(other.swapchainImages_);
+            swapchainImageViews_ = std::move(other.swapchainImageViews_);
             other.instance_ = VK_NULL_HANDLE;
             other.debugMessenger_ = VK_NULL_HANDLE;
             other.surface_ = VK_NULL_HANDLE;
             other.physicalDevice_ = VK_NULL_HANDLE;
             other.device_ = VK_NULL_HANDLE;
             other.graphicsQueue_ = VK_NULL_HANDLE;
+            other.swapchain_ = VK_NULL_HANDLE;
         }
         return *this;
     }
@@ -476,5 +503,144 @@ namespace renderer
     Renderer::~Renderer()
     {
         destroy_();
+    }
+
+    std::expected<void, VkResult> Renderer::recreateSwapchain_(VkExtent2D windowExtent)
+    {
+        // On recreate (not initial), idle the device so anything referencing
+        // the old swapchain's images has finished. Fence-tracking the in-flight
+        // frames against the old swapchain is the later optimization; for now
+        // a full wait keeps the teardown trivially safe.
+        if (swapchain_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
+
+        VkSurfaceCapabilitiesKHR caps{};
+        VK_TRY(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice_, surface_, &caps));
+
+        // Choose the swapchain extent. When the surface dictates a size
+        // (currentExtent != UINT32_MAX — Win32, most platforms), trust it.
+        // When it doesn't (sentinel — Wayland and some MoltenVK configs), the
+        // app picks; clamp the platform-reported window size against the
+        // caps' min/max range.
+        VkExtent2D chosenExtent;
+        if (caps.currentExtent.width != UINT32_MAX)
+        {
+            chosenExtent = caps.currentExtent;
+        }
+        else
+        {
+            chosenExtent.width =
+                std::clamp(windowExtent.width, caps.minImageExtent.width, caps.maxImageExtent.width);
+            chosenExtent.height =
+                std::clamp(windowExtent.height, caps.minImageExtent.height, caps.maxImageExtent.height);
+        }
+
+        // minImageCount + 1 gives one image of slack above the driver's
+        // minimum so vkAcquireNextImageKHR doesn't have to block waiting for
+        // the presentation engine to release one. Not specifically "triple-
+        // buffering" — that's just what it works out to when minImageCount
+        // is 2 (typical desktop). Platforms with minImageCount of 3 (Android,
+        // some MoltenVK configs) land at 4; the slack property still holds.
+        // maxImageCount == 0 means "no upper bound" per spec — hence the guard.
+        uint32_t imageCount = caps.minImageCount + 1;
+        if (caps.maxImageCount > 0 && imageCount > caps.maxImageCount) imageCount = caps.maxImageCount;
+
+        uint32_t formatCount = 0;
+        VK_TRY(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface_, &formatCount, nullptr));
+        if (formatCount == 0)
+        {
+            spdlog::error("[vulkan] surface reports zero supported formats");
+            return std::unexpected(VK_ERROR_FORMAT_NOT_SUPPORTED);
+        }
+        std::vector<VkSurfaceFormatKHR> formats(formatCount);
+        VK_TRY(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface_, &formatCount, formats.data()));
+        // Prefer BGRA8 sRGB so the swapchain does linear->sRGB encoding for us
+        // on present; shaders write linear, monitor sees sRGB. Fall back to
+        // whatever the surface reports first if that combo isn't available.
+        VkSurfaceFormatKHR chosenFormat = formats[0];
+        for (const auto& f : formats)
+        {
+            if (f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            {
+                chosenFormat = f;
+                break;
+            }
+        }
+
+        // FIFO is the only present mode guaranteed available. It's vsync —
+        // good default for a game engine; revisit when we want low-latency
+        // (MAILBOX) or uncapped (IMMEDIATE) options as a setting.
+        constexpr VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+
+        // Pass the old swapchain so the driver can recycle resources. We
+        // destroy it ourselves after the new one is created — vkCreateSwapchainKHR
+        // retires the old one but doesn't free it.
+        const VkSwapchainKHR oldSwapchain = swapchain_;
+        const VkSwapchainCreateInfoKHR sci{
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface = surface_,
+            .minImageCount = imageCount,
+            .imageFormat = chosenFormat.format,
+            .imageColorSpace = chosenFormat.colorSpace,
+            .imageExtent = chosenExtent,
+            .imageArrayLayers = 1,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            // Single graphics+present queue family (pickPhysicalDevice enforces
+            // it), so EXCLUSIVE — no concurrent-access fan-out needed.
+            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .preTransform = caps.currentTransform,
+            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode = presentMode,
+            .clipped = VK_TRUE,
+            .oldSwapchain = oldSwapchain,
+        };
+        VkSwapchainKHR newSwapchain = VK_NULL_HANDLE;
+        VK_TRY(vkCreateSwapchainKHR(device_, &sci, nullptr, &newSwapchain));
+
+        // New swapchain is live; tear down the old views (they reference
+        // soon-to-be-invalid images) and then the old swapchain itself.
+        for (VkImageView v : swapchainImageViews_)
+        {
+            if (v != VK_NULL_HANDLE) vkDestroyImageView(device_, v, nullptr);
+        }
+        swapchainImageViews_.clear();
+        if (oldSwapchain != VK_NULL_HANDLE) vkDestroySwapchainKHR(device_, oldSwapchain, nullptr);
+
+        swapchain_ = newSwapchain;
+        swapchainFormat_ = chosenFormat.format;
+        extent_ = chosenExtent;
+
+        uint32_t actualImageCount = 0;
+        VK_TRY(vkGetSwapchainImagesKHR(device_, swapchain_, &actualImageCount, nullptr));
+        swapchainImages_.resize(actualImageCount);
+        VK_TRY(vkGetSwapchainImagesKHR(device_, swapchain_, &actualImageCount, swapchainImages_.data()));
+
+        // Default-construct slots to VK_NULL_HANDLE so a mid-loop failure
+        // leaves the vector in a state destroy_() can sweep cleanly.
+        swapchainImageViews_.assign(actualImageCount, VK_NULL_HANDLE);
+        for (uint32_t i = 0; i < actualImageCount; ++i)
+        {
+            const VkImageViewCreateInfo ivci{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = swapchainImages_[i],
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = swapchainFormat_,
+                .components = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY,
+                               VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY},
+                .subresourceRange =
+                    {
+                        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel = 0,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                    },
+            };
+            VK_TRY(vkCreateImageView(device_, &ivci, nullptr, &swapchainImageViews_[i]));
+        }
+
+        spdlog::info("[vulkan] swapchain {}: {}x{}, {} images, format {}",
+                     oldSwapchain == VK_NULL_HANDLE ? "created" : "recreated", extent_.width, extent_.height,
+                     actualImageCount, static_cast<int>(swapchainFormat_));
+        return {};
     }
 } // namespace renderer

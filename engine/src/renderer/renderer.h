@@ -5,6 +5,7 @@
 #include <expected>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace renderer
 {
@@ -86,6 +87,15 @@ namespace renderer
         // Shared by dtor and move-assign so the order can't drift.
         void destroy_() noexcept;
 
+        // (Re)builds the swapchain and its per-image views against the current
+        // surface. Called once from bindSurface for the initial build; called
+        // again from the resize / VK_ERROR_OUT_OF_DATE_KHR path later. The
+        // `windowExtent` argument is the platform's current client-area size;
+        // it's clamped against surfaceCaps.{min,max}ImageExtent, or ignored
+        // entirely when surfaceCaps.currentExtent reports a definite size
+        // (the usual Win32 case — surface dictates extent).
+        std::expected<void, VkResult> recreateSwapchain_(VkExtent2D windowExtent);
+
         VkInstance instance_ = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE; // VK_NULL_HANDLE in release
         VkSurfaceKHR surface_ = VK_NULL_HANDLE;
@@ -94,7 +104,10 @@ namespace renderer
         VkQueue graphicsQueue_ = VK_NULL_HANDLE; // not owned (lifetime tied to device)
         uint32_t graphicsQueueIdx_ = 0;
         VkExtent2D extent_{};
-        // TODO: VkSwapchainKHR, per-frame sync, command pools, etc.
-        // Add as init lands.
+        VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
+        VkFormat swapchainFormat_ = VK_FORMAT_UNDEFINED;
+        std::vector<VkImage> swapchainImages_;          // not owned (lifetime tied to swapchain)
+        std::vector<VkImageView> swapchainImageViews_;  // owned, one per image
+        // TODO: per-frame sync, command pools, etc. Add as init lands.
     };
 } // namespace renderer
