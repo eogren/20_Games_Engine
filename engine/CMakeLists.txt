@@ -42,6 +42,7 @@ add_library(engine STATIC
     src/engine.cpp
     src/log/Log.cpp
     src/renderer/renderer.cpp
+    src/renderer/renderer_init.cpp
 )
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine

@@ -2,6 +2,7 @@
 
 #include "volk.h"
 
+#include <array>
 #include <expected>
 #include <span>
 #include <string>
@@ -9,6 +10,8 @@
 
 namespace renderer
 {
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT{2};
+
     class Renderer;
 
     // Phase 1: Vulkan instance only.
@@ -106,8 +109,19 @@ namespace renderer
         VkExtent2D extent_{};
         VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
         VkFormat swapchainFormat_ = VK_FORMAT_UNDEFINED;
-        std::vector<VkImage> swapchainImages_;          // not owned (lifetime tied to swapchain)
-        std::vector<VkImageView> swapchainImageViews_;  // owned, one per image
-        // TODO: per-frame sync, command pools, etc. Add as init lands.
+        std::vector<VkImage> swapchainImages_;         // not owned (lifetime tied to swapchain)
+        std::vector<VkImageView> swapchainImageViews_; // owned, one per image
+        // Single pool flagged RESET_COMMAND_BUFFER so each frame's buffer can be
+        // reset independently when its fence signals. Pool-per-frame (with
+        // vkResetCommandPool) is the textbook alternative — revisit if recording
+        // cost ever shows up in profiles.
+        VkCommandPool commandPool_ = VK_NULL_HANDLE;
+        std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> commandBuffers_{}; // not owned (freed with command pool)
+        std::array<VkFence, MAX_FRAMES_IN_FLIGHT> fences{};
+        std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> imageAcquiredSemaphores{};
+        // Indexed by swapchain image (not frame-in-flight): vkQueuePresentKHR
+        // waits on the semaphore that the submit for *this* image signaled, and
+        // frame-in-flight count doesn't match image count in general.
+        std::vector<VkSemaphore> renderCompleteSemaphores;
     };
 } // namespace renderer
