@@ -57,6 +57,13 @@ namespace platform
             ::CreateWindow(MAKEINTATOM(windowClass), nameZ.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                            800, 600, nullptr, nullptr, ::GetModuleHandle(nullptr), static_cast<LPVOID>(impl_.get()));
         WIN32_CHECK(impl_->wnd);
+
+        // Engine now owns the loop, so there's no GameLoop() entry point to put
+        // the show/update pair in. Doing it here keeps the window visible from
+        // the moment construction returns; the renderer's two-phase init still
+        // gets to run against a real HWND before the first frame is pumped.
+        ::ShowWindow(impl_->wnd, SW_SHOW);
+        ::UpdateWindow(impl_->wnd);
     }
 
     Platform::~Platform()
@@ -67,27 +74,26 @@ namespace platform
         }
     }
 
-    void Platform::GameLoop()
+    void Platform::pollEvents()
     {
-        ::ShowWindow(impl_->wnd, SW_SHOW);
-        ::UpdateWindow(impl_->wnd);
-
         MSG msg;
-        while (impl_->running)
+        while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
         {
-            while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
+            if (msg.message == WM_QUIT)
             {
-                if (msg.message == WM_QUIT)
-                {
-                    impl_->running = false;
-                }
-                else
-                {
-                    ::TranslateMessage(&msg);
-                    ::DispatchMessage(&msg);
-                }
+                impl_->running = false;
+            }
+            else
+            {
+                ::TranslateMessage(&msg);
+                ::DispatchMessage(&msg);
             }
         }
+    }
+
+    bool Platform::shouldClose() const noexcept
+    {
+        return !impl_->running;
     }
 
 } // namespace platform

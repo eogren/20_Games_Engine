@@ -1,5 +1,6 @@
 #include "engine.h"
 
+#include "platform/platform.h"
 #include "platform/surface.h"
 
 namespace engine
@@ -30,6 +31,16 @@ namespace engine
 
         renderer_.emplace(std::move(*rend));
         return {};
+    }
+
+    void Engine::run()
+    {
+        while (!platform_.shouldClose())
+        {
+            platform_.pollEvents();
+            // renderer_->beginFrame(...), game_.update(ctx, dt), renderer_->endFrame(),
+            // input_.endFrame() land here as those layers do (CLAUDE.md > "Frame ordering").
+        }
     }
 
 } // namespace engine

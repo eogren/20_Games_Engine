@@ -35,10 +35,14 @@ namespace platform
         Platform(Platform&&) = delete;
         Platform& operator=(Platform&&) = delete;
 
-        // Drives the OS message pump until the user closes the window.
-        // Temporary shape — splits into pollEvents() + shouldClose() once the
-        // engine owns the per-frame loop.
-        void GameLoop();
+        // Drain whatever OS events have queued since the last call. Non-blocking:
+        // returns once the message queue is empty. Engine calls this once per
+        // frame at the top of its loop (see CLAUDE.md > "Frame ordering").
+        void pollEvents();
+
+        // True once the OS has told us to terminate (WM_QUIT on Win32). Engine
+        // loops until this flips.
+        [[nodiscard]] bool shouldClose() const noexcept;
 
     private:
         std::unique_ptr<Impl> impl_;
