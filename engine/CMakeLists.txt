@@ -47,10 +47,6 @@ add_library(engine STATIC
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine
     PUBLIC  volk vma spdlog::spdlog
-    # platform is referenced by name here even though add_subdirectory(platform)
-    # runs after add_subdirectory(engine) in the root CMakeLists. CMake's
-    # target_link_libraries resolves at generation time, so the forward
-    # reference is fine.
     PRIVATE engine_compile_options platform
 )
 
