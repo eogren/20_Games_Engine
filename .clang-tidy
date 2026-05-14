@@ -27,6 +27,11 @@
 #     (any <filesystem> consumer trips the same path). Re-enable if/when
 #     the check learns the bitmask idiom.
 #
+# Vulkan-hostile checks live in scoped child .clang-tidy files under
+# engine/src/renderer/ and platform/src/win32/, so the rest of the tree
+# keeps coverage. Add a child config when Vulkan code spreads to a new
+# subtree.
+#
 # Run `./lint.ps1` to invoke. Re-enable a check by removing the `-` prefix.
 
 Checks: >
@@ -45,8 +50,7 @@ Checks: >
   -bugprone-exception-escape,
   -bugprone-implicit-widening-of-multiplication-result,
   -cppcoreguidelines-narrowing-conversions,
-  -clang-analyzer-optin.core.EnumCastOutOfRange,
-  -clang-diagnostic-missing-designated-field-initializers
+  -clang-analyzer-optin.core.EnumCastOutOfRange
 
 # Local and CI alike fail on any reported diagnostic. Filter noisy checks
 # in Checks: above rather than letting warnings pile up.

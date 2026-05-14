@@ -2,12 +2,16 @@
 
 #include "volk.h"
 
+#include <array>
 #include <expected>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace renderer
 {
+    constexpr uint32_t MAX_FRAMES_IN_FLIGHT{2};
+
     class Renderer;
 
     // Phase 1: Vulkan instance only.
@@ -86,6 +90,15 @@ namespace renderer
         // Shared by dtor and move-assign so the order can't drift.
         void destroy_() noexcept;
 
+        // (Re)builds the swapchain and its per-image views against the current
+        // surface. Called once from bindSurface for the initial build; called
+        // again from the resize / VK_ERROR_OUT_OF_DATE_KHR path later. The
+        // `windowExtent` argument is the platform's current client-area size;
+        // it's clamped against surfaceCaps.{min,max}ImageExtent, or ignored
+        // entirely when surfaceCaps.currentExtent reports a definite size
+        // (the usual Win32 case — surface dictates extent).
+        std::expected<void, VkResult> recreateSwapchain_(VkExtent2D windowExtent);
+
         VkInstance instance_ = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE; // VK_NULL_HANDLE in release
         VkSurfaceKHR surface_ = VK_NULL_HANDLE;
@@ -94,7 +107,21 @@ namespace renderer
         VkQueue graphicsQueue_ = VK_NULL_HANDLE; // not owned (lifetime tied to device)
         uint32_t graphicsQueueIdx_ = 0;
         VkExtent2D extent_{};
-        // TODO: VkSwapchainKHR, per-frame sync, command pools, etc.
-        // Add as init lands.
+        VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
+        VkFormat swapchainFormat_ = VK_FORMAT_UNDEFINED;
+        std::vector<VkImage> swapchainImages_;         // not owned (lifetime tied to swapchain)
+        std::vector<VkImageView> swapchainImageViews_; // owned, one per image
+        // Single pool flagged RESET_COMMAND_BUFFER so each frame's buffer can be
+        // reset independently when its fence signals. Pool-per-frame (with
+        // vkResetCommandPool) is the textbook alternative — revisit if recording
+        // cost ever shows up in profiles.
+        VkCommandPool commandPool_ = VK_NULL_HANDLE;
+        std::array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> commandBuffers_{}; // not owned (freed with command pool)
+        std::array<VkFence, MAX_FRAMES_IN_FLIGHT> fences{};
+        std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> imageAcquiredSemaphores{};
+        // Indexed by swapchain image (not frame-in-flight): vkQueuePresentKHR
+        // waits on the semaphore that the submit for *this* image signaled, and
+        // frame-in-flight count doesn't match image count in general.
+        std::vector<VkSemaphore> renderCompleteSemaphores;
     };
 } // namespace renderer

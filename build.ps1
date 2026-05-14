@@ -38,6 +38,17 @@ function Invoke-Step($label, $block) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-if ($Target -in 'configure','all') { Invoke-Step "configure ($Preset)" { cmake --preset $Preset } }
+if ($Target -in 'configure','all') {
+    Invoke-Step "configure ($Preset)" { cmake --preset $Preset }
+    # Mirror the debug preset's compile_commands.json to the repo root so IDE
+    # plugins and ad-hoc clang-tidy runs that search upward from source files
+    # find it. .clangd at the root points at build/debug directly; this copy
+    # covers tools that don't read .clangd.
+    if ($Preset -eq 'debug') {
+        $ccsrc = Join-Path $PSScriptRoot 'build/debug/compile_commands.json'
+        $ccdst = Join-Path $PSScriptRoot 'compile_commands.json'
+        if (Test-Path $ccsrc) { Copy-Item -Force $ccsrc $ccdst }
+    }
+}
 if ($Target -in 'build','all')     { Invoke-Step "build ($Preset)"     { cmake --build "build/$Preset" } }
 if ($Target -in 'test','all')      { Invoke-Step "test ($Preset)"      { ctest --preset $Preset } }

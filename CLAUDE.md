@@ -28,17 +28,20 @@ This is a *design heuristic*, not a hard rule. If Bevy and substrate-first ever 
 
 ## Layer split
 
-**`engine/`** — game logic, simulation state, math, input handling, **and rendering**. Includes `<vulkan/vulkan.h>` and VMA freely. The bulk of the engine lives here. Knows nothing about windows, app lifecycle, or platform-specific event loops.
+**`engine/`** — game logic, simulation state, math, input handling, rendering, **and the frame loop**. Includes `<vulkan/vulkan.h>` and VMA freely. The bulk of the codebase lives here. Holds a reference to a `platform::Platform` and calls it for OS-provided services (window events, surface creation, hi-res time, raw input sources).
 
-**`platform/`** — the OS-divergence layer. Owns:
-- App lifecycle and message pump (`CreateWindowExW`, `PeekMessageW`/`DispatchMessageW`)
-- Window creation (`HWND` + `WNDCLASSEXW`) and resize/close plumbing
-- Vulkan surface creation (`vkCreateWin32SurfaceKHR`) — the only Vulkan call platform makes; everything else flows through engine
-- Input sources that have no portable shape (Raw Input / XInput)
+**`platform/`** — the OS-divergence layer. A service provider, not a host. Owns:
+- Window creation (`HWND` + `WNDCLASSEXW`) and resize/close state
+- Event pumping (`PeekMessageW`/`DispatchMessageW`) exposed as `pollEvents()` / `shouldClose()`
+- Vulkan surface creation (`vkCreateWin32SurfaceKHR`) — the only Vulkan call platform makes
+- Hi-res time, OS-specific input sources (Raw Input / XInput), DPI/size queries
+- Native handles when callers need them (e.g. `nativeWindow()` for the Vulkan↔Win32 bridge)
 
-Platform depends on Engine. **Engine never imports Platform.** This direction is non-negotiable. Vulkan code itself stays in engine — `platform/` exists for what Windows does that's *not* Vulkan. When iPad lands, a sibling `platform/ios/` (or similar) sits at the same level, owns `CAMetalLayer` surface creation, and feeds the same Vulkan-talking engine.
+**Engine depends on Platform's public surface; Platform doesn't depend on Engine.** Dependency is one-way, in this direction. Concrete `Platform` implementations live under `platform/win32/`, `platform/ios/`, etc., and are selected at compile time via `using Platform = win32::Platform;` in `platform/src/platform.h`. Engine code names `platform::Platform` directly — duck-typed across backends at compile time, no virtual dispatch, no abstract base. Discipline is keeping method signatures identical across backends; CI compiles each platform to catch divergence.
 
-Portable input (keyboard codes, gamepad button identity) lives in engine — the OS-specific path that produces those events lives in platform.
+The Win32 event-pump model (`pollEvents()` called from the engine's loop) maps cleanly to most platforms but **not necessarily iOS**, where the OS owns the run loop and calls back into the app. That mismatch is deferred: if and when iPad happens, either iOS's `Platform::pollEvents()` becomes a thin shim that processes whatever the iOS runloop has buffered since the last call, or engine's loop entry inverts on that platform. Don't pre-design for it.
+
+Vulkan code itself stays in engine — `platform/` exists for what the OS does that's *not* Vulkan, plus the one bridge call to create a surface from a native window. Portable input (keyboard codes, gamepad button identity) lives in engine — the OS-specific path that produces those events lives in platform.
 
 ## Renderer design
 
@@ -58,17 +61,23 @@ Renderer pixel-readback tests need a working Vulkan ICD and compiled shaders; th
 
 ## Frame ordering
 
-Per-frame work has a fixed order owned by the engine's per-frame entry point:
-1. `renderer.beginFrame(...)` — acquires a swapchain image, begins command-buffer recording, sets up the render target.
-2. Game logic / simulation tick (consumes input edges, issues draws against the renderer immediately — encoding is interleaved with simulation, not a separate phase).
-3. `renderer.endFrame()` — closes recording, submits, presents.
-4. `input.endFrame()` — clears pressed/released edge sets.
+The engine owns the loop. `Engine::run()` ticks until the platform reports it's time to exit:
 
-Edge sets must be cleared **after** game logic consumed them. Encoding happens *during* `game.update`, not after — the engine just brackets it. The platform host pumps the Win32 message loop and calls `engine.update(...)` per swapchain frame.
+```cpp
+while (!platform_.shouldClose()) {
+    platform_.pollEvents();        // 0. drain OS events into engine input state
+    renderer_.beginFrame(...);     // 1. acquire swapchain image, start recording
+    game_.update(ctx, dt);         // 2. simulation tick; issues draws inline
+    renderer_.endFrame();          // 3. close recording, submit, present
+    input_.endFrame();             // 4. clear pressed/released edge sets
+}
+```
+
+Edge sets must be cleared **after** game logic consumed them. Encoding happens *during* `game.update`, not after — the engine just brackets it. Platform never calls into engine; the loop drives platform via `pollEvents()` and reads back state.
 
 ## Game integration
 
-Games are **a third tier** on top of platform → engine. A game target implements engine's `Game` interface (`update(GameContext& ctx, float dt)`), constructs an instance, and hands it to platform's host. The engine ticks the game each frame and passes a `GameContext` — an explicit allowlist of engine services (initially `keyboard` and `renderer`; later `audio`, `pointer`, etc.) the game may touch this tick. Games should not hold references to the engine itself.
+Games are **a third tier** sitting above engine, which sits above platform. A game target implements engine's `Game` interface (`update(GameContext& ctx, float dt)`). The host (`games/<Name>/main.cpp`) constructs a `Platform`, then constructs an `Engine` against that platform, then hands a `Game` instance to the engine and calls `engine.run()`. The engine ticks the game each frame and passes a `GameContext` — an explicit allowlist of engine services (initially `keyboard` and `renderer`; later `audio`, `pointer`, etc.) the game may touch this tick. Games should not hold references to the engine itself or to platform.
 
 Object/system registration (ECS-style) is **not** built in. When 2–3 games show repeated entity/system patterns in their top-level `update`, extract a registration layer on top of `Game` — same "substrate first, workflow later" pattern as rendering.
 
@@ -106,13 +115,6 @@ ctest --preset debug
 
 Presets: `debug`, `release`, `relwithdebinfo`, `asan` (MSVC `/fsanitize=address`), `ubsan` (clang-cl, `-fsanitize=undefined`), `analyze` (MSVC `/analyze` static analysis — slow, separate CI lane). Per-package `test.sh` wrappers land alongside the directories they belong to as the test suites grow.
 
-## Current state (2026-05-13)
+## Legacy `cpp/` tree
 
-Scaffolding is in place; no real engine surface area yet.
-
-- `engine/` has a skeletal `engine::version()` entry point, the math substrate (`Angle` plus `_deg` / `_rad` literals, ported from `cpp/math/`) under `engine/src/math/`, doctest-based math tests, and vendored third-party headers for volk, VMA, and doctest under `engine/third_party/`.
-- `platform/` has a skeletal `platform::version()`. No window, no message pump, no Vulkan surface creation yet.
-- `games/Pong/` has a `main.cpp` that prints both version strings — proves engine + platform link into an executable. No game loop yet.
-- Build infra: `CMakePresets.json` with debug/release/relwithdebinfo plus asan/ubsan/analyze sanitizer lanes; clang-format + clang-tidy wired up against the new tree; CI runs the matrix.
-
-The legacy `cpp/` tree (Metal + Objective-C++) remains as transitional reference for math and game shapes still to port; it gets removed once nothing's left to mine from it. `cpp/` is not being revived against Vulkan; the new code lives in `engine/`.
+The `cpp/` tree (Metal + Objective-C++) remains as transitional reference for math and game shapes still to port over to the new Vulkan engine. It gets removed once nothing's left to mine from it. `cpp/` is not being revived against Vulkan; the new code lives in `engine/`.

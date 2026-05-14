@@ -1,0 +1,18 @@
+# Points clangd at the debug preset's compile_commands.json. Without this,
+# clangd searches upward from each source file, finds nothing at the repo
+# root, and falls back to guessed flags — which produces spurious
+# "unknown type / header not found" diagnostics.
+#
+# build.ps1 also mirrors the same file to the repo root after `configure`
+# for tools that read compile_commands.json directly instead of .clangd.
+
+CompileFlags:
+  CompilationDatabase: build/debug
+
+Diagnostics:
+  # Mirrors the .clang-tidy suppression of the same name. Vulkan structs
+  # are designated-initialized with only the fields that matter; the rest
+  # value-initialize to zero, which is exactly the intent. MSVC doesn't
+  # warn on this; suppressing keeps clangd in sync with the build reality.
+  Suppress:
+    - missing-designated-field-initializers
