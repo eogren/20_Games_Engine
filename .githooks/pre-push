@@ -1,0 +1,4 @@
+#!/bin/sh
+# Reject pushes whose tracked C++ source has clang-tidy diagnostics.
+# Bypass with `git push --no-verify` when needed.
+exec pwsh -NoProfile -ExecutionPolicy Bypass -File ./lint.ps1
