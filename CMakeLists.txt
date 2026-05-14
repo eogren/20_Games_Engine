@@ -155,6 +155,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+# MSVC's STL emits a per-TU '__annotate_string' / '__annotate_vector' sentinel
+# whose value depends on whether the TU was compiled with /fsanitize=address.
+# Mixing ASan and non-ASan TUs that touch std::string/std::vector in the same
+# link fails with LNK2038. spdlog is built from source here, so rebuild it
+# under the same sanitizer flag — engine_compile_options is intentionally
+# scoped to our code (warning posture), but ASan is a link-time contract that
+# every TU sharing STL types must agree on.
+if(ENGINE_ENABLE_ASAN AND MSVC AND TARGET spdlog)
+    target_compile_options(spdlog PRIVATE /fsanitize=address)
+endif()
+
 enable_testing()
 
 add_subdirectory(engine)
