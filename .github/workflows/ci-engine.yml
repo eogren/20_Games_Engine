@@ -162,6 +162,10 @@ jobs:
       # the SDK too. The cache shared with build-and-test makes the
       # second install effectively free after the first run.
       VULKAN_VERSION: 1.4.350.0
+      # Pinned LLVM for clang-format/clang-tidy. Bumping this here
+      # invalidates the LLVM cache and triggers a fresh choco install on
+      # the next run.
+      LLVM_VERSION: 22.1.0
 
     steps:
       - uses: actions/checkout@v5
@@ -205,17 +209,39 @@ jobs:
         run: choco install ninja --no-progress -y
         shell: pwsh
 
+      # Cache the installed LLVM tree keyed on version. The choco install
+      # is ~90s per run; caching makes subsequent runs effectively
+      # instantaneous. Cache may contain stragglers from the runner
+      # image's bundled LLVM (since `--force` overwrites but doesn't
+      # delete), but that doesn't affect correctness — the pinned
+      # binaries on PATH overwrite the bundled ones either way.
+      - name: Cache LLVM
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          path: C:\Program Files\LLVM
+          key: llvm-windows-${{ env.LLVM_VERSION }}
+
       # Install a pinned LLVM. The runner image ships its own LLVM at
       # C:\Program Files\LLVM\bin (currently 20.x), but we pin
       # explicitly so the lint output stays stable across runs even
       # when the bundled version moves, and so CI matches what we run
       # locally — driver-mode strictness drifts across LLVM majors and
       # caused a CI/local split previously. `--force` overwrites the
-      # preinstalled tree at the standard path.
+      # preinstalled tree at the standard path. Don't drop --force or
+      # pre-wipe the dir: the image registers LLVM with chocolatey, so
+      # an unforced reinstall stalls in chocolatey's upgrade path.
       - name: Install LLVM (pinned)
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          choco install llvm --version=22.1.0 --no-progress -y --force
+          choco install llvm --version=$env:LLVM_VERSION --no-progress -y --force
+
+      # Always-run: add LLVM bin to PATH. On cache hit the install step
+      # is skipped, so PATH wouldn't be set otherwise.
+      - name: Add LLVM to PATH
+        shell: pwsh
+        run: |
           "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Show tool versions
