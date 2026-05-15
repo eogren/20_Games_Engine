@@ -49,6 +49,9 @@ namespace platform
             .lpfnWndProc = &wndProcThunk,
             .hInstance = hInstance,
             .hIcon = appIcon,
+            // Without this the launch-time wait cursor sticks over the client
+            // area until another window forces a change.
+            .hCursor = ::LoadCursor(nullptr, IDC_ARROW),
             .lpszClassName = "GameWindowClass",
             .hIconSm = appIcon,
         };
@@ -62,11 +65,14 @@ namespace platform
                                     CW_USEDEFAULT, 800, 600, nullptr, nullptr, hInstance,
                                     static_cast<LPVOID>(impl_.get()));
         WIN32_CHECK(impl_->wnd);
+    }
 
-        // Engine now owns the loop, so there's no GameLoop() entry point to put
-        // the show/update pair in. Doing it here keeps the window visible from
-        // the moment construction returns; the renderer's two-phase init still
-        // gets to run against a real HWND before the first frame is pumped.
+    void Platform::show()
+    {
+        // Deferred from the constructor so Vulkan init (hundreds of ms) doesn't
+        // run with the empty client area on screen — the user would see a white
+        // flash before the first present. Engine::run() calls this just before
+        // entering its loop.
         ::ShowWindow(impl_->wnd, SW_SHOW);
         ::UpdateWindow(impl_->wnd);
     }

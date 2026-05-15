@@ -35,6 +35,8 @@ namespace platform
         Platform(Platform&&) = delete;
         Platform& operator=(Platform&&) = delete;
 
+        void show();
+
         // Drain whatever OS events have queued since the last call. Non-blocking:
         // returns once the message queue is empty. Engine calls this once per
         // frame at the top of its loop (see CLAUDE.md > "Frame ordering").
