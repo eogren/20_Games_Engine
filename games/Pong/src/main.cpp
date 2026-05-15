@@ -1,7 +1,7 @@
 // Pong — entry point.
 
 #include "engine.h"
-#include "log/Log.h"
+#include "log/log.h"
 #include "platform/platform.h"
 
 #include <spdlog/spdlog.h>

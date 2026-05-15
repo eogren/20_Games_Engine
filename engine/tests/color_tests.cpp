@@ -2,7 +2,7 @@
 // tests to the same executable.
 #include "doctest.h"
 
-#include "math/Color.h"
+#include "math/color.h"
 
 using doctest::Approx;
 using engine::Color;

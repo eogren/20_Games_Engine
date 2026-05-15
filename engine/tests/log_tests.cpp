@@ -5,7 +5,7 @@
 
 #include "doctest.h"
 
-#include "log/Log.h"
+#include "log/log.h"
 
 #include <spdlog/spdlog.h>
 

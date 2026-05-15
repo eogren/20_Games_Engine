@@ -40,7 +40,7 @@ target_include_directories(doctest SYSTEM INTERFACE third_party/doctest)
 
 add_library(engine STATIC
     src/engine.cpp
-    src/log/Log.cpp
+    src/log/log.cpp
     src/renderer/renderer.cpp
     src/renderer/renderer_init.cpp
 )
@@ -57,9 +57,9 @@ target_link_libraries(engine
 # implementation macro in more than one TU breaks the link.
 add_executable(engine_tests
     tests/smoke_test.cpp
-    tests/MathTests.cpp
-    tests/ColorTests.cpp
-    tests/LogTests.cpp
+    tests/math_tests.cpp
+    tests/color_tests.cpp
+    tests/log_tests.cpp
 )
 target_link_libraries(engine_tests PRIVATE engine doctest engine_compile_options)
 add_test(NAME engine_tests COMMAND engine_tests)

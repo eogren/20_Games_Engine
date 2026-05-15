@@ -2,7 +2,7 @@
 // tests to the same executable.
 #include "doctest.h"
 
-#include "math/Math.h"
+#include "math/math.h"
 
 #include <numbers>
 
