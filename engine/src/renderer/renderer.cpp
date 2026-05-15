@@ -141,12 +141,13 @@ namespace renderer
         destroy_();
     }
 
-    void Renderer::setClearColor(float r, float g, float b, float a) noexcept
+    void Renderer::setClearColor(engine::Color color) noexcept
     {
-        clearColor_.float32[0] = r;
-        clearColor_.float32[1] = g;
-        clearColor_.float32[2] = b;
-        clearColor_.float32[3] = a;
+        const auto rgba = color.floats();
+        clearColor_.float32[0] = rgba[0];
+        clearColor_.float32[1] = rgba[1];
+        clearColor_.float32[2] = rgba[2];
+        clearColor_.float32[3] = rgba[3];
     }
 
     bool Renderer::beginFrame()

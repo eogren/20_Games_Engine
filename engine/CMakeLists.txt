@@ -58,6 +58,7 @@ target_link_libraries(engine
 add_executable(engine_tests
     tests/smoke_test.cpp
     tests/MathTests.cpp
+    tests/ColorTests.cpp
     tests/LogTests.cpp
 )
 target_link_libraries(engine_tests PRIVATE engine doctest engine_compile_options)
