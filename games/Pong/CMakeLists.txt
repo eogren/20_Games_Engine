@@ -3,7 +3,15 @@
 # exists). At scaffold time, just a hello-world that links engine + platform
 # to prove the dependency graph.
 
-add_executable(Pong
-    src/main.cpp
-)
+set(PONG_SOURCES src/main.cpp)
+
+# On Windows, ship the embedded app icon. CMake recognises .rc and runs
+# MSVC's rc.exe to compile it; the resulting .res is linked into Pong.exe,
+# giving Explorer/taskbar the icon and letting the platform layer LoadIcon
+# it by name for the window class.
+if(WIN32)
+    list(APPEND PONG_SOURCES resources/AppIcon.rc)
+endif()
+
+add_executable(Pong ${PONG_SOURCES})
 target_link_libraries(Pong PRIVATE engine platform engine_compile_options)

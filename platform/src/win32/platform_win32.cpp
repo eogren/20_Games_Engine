@@ -41,11 +41,22 @@ namespace platform
 
     Platform::Platform(std::string_view windowName) : impl_(std::make_unique<Impl>())
     {
+        HINSTANCE hInstance = ::GetModuleHandle(nullptr);
+
+        // Games embed their app icon as resource "AppIcon" via a .rc on
+        // their target. LoadIcon returns null if the host EXE didn't ship
+        // one, which leaves hIcon zero — Windows then shows the system
+        // default. Keeps icon wiring opt-in per game without coupling the
+        // platform layer to any specific game's assets.
+        HICON appIcon = ::LoadIcon(hInstance, "AppIcon");
+
         WNDCLASSEX wndClass{
             .cbSize = sizeof(WNDCLASSEX),
             .lpfnWndProc = &wndProcThunk,
-            .hInstance = ::GetModuleHandle(nullptr),
+            .hInstance = hInstance,
+            .hIcon = appIcon,
             .lpszClassName = "GameWindowClass",
+            .hIconSm = appIcon,
         };
 
         auto windowClass = ::RegisterClassEx(&wndClass);
@@ -53,9 +64,9 @@ namespace platform
 
         // CreateWindow needs a null-terminated string; string_view doesn't promise one.
         std::string nameZ(windowName);
-        impl_->wnd =
-            ::CreateWindow(MAKEINTATOM(windowClass), nameZ.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                           800, 600, nullptr, nullptr, ::GetModuleHandle(nullptr), static_cast<LPVOID>(impl_.get()));
+        impl_->wnd = ::CreateWindow(MAKEINTATOM(windowClass), nameZ.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
+                                    CW_USEDEFAULT, 800, 600, nullptr, nullptr, hInstance,
+                                    static_cast<LPVOID>(impl_.get()));
         WIN32_CHECK(impl_->wnd);
 
         // Engine now owns the loop, so there's no GameLoop() entry point to put

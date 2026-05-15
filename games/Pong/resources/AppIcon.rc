@@ -1,0 +1,5 @@
+// Embeds AppIcon.ico into Pong.exe as a string-named ICON resource. The
+// Win32 platform layer loads this by name ("AppIcon") at window-class
+// registration time so the title-bar/taskbar icon picks it up; Explorer
+// shows it for the .exe automatically by reading the first GROUP_ICON.
+AppIcon ICON "AppIcon.ico"
