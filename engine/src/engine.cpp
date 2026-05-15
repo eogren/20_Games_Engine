@@ -40,6 +40,11 @@ namespace engine
         // the loop body operates on a plain reference.
         if (!renderer_.has_value()) return;
         auto& r = *renderer_;
+        // Renderer init is done; reveal the window now so the user's first sight
+        // of the client area is the cleared first frame, not the empty pre-init
+        // fill. Has to land after initRenderer (which we gate on above) and
+        // before the loop's first beginFrame.
+        platform_.show();
         while (!platform_.shouldClose())
         {
             platform_.pollEvents();

@@ -35,6 +35,12 @@ namespace platform
         Platform(Platform&&) = delete;
         Platform& operator=(Platform&&) = delete;
 
+        // Reveal the window. Deferred from construction so renderer init
+        // (Vulkan instance/device/swapchain — hundreds of ms) doesn't run with
+        // the empty client area on screen and produce a flash before the first
+        // present. Engine::run() calls this just before entering its loop.
+        void show();
+
         // Drain whatever OS events have queued since the last call. Non-blocking:
         // returns once the message queue is empty. Engine calls this once per
         // frame at the top of its loop (see CLAUDE.md > "Frame ordering").
