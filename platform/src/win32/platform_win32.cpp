@@ -42,12 +42,6 @@ namespace platform
     Platform::Platform(std::string_view windowName) : impl_(std::make_unique<Impl>())
     {
         HINSTANCE hInstance = ::GetModuleHandle(nullptr);
-
-        // Games embed their app icon as resource "AppIcon" via a .rc on
-        // their target. LoadIcon returns null if the host EXE didn't ship
-        // one, which leaves hIcon zero — Windows then shows the system
-        // default. Keeps icon wiring opt-in per game without coupling the
-        // platform layer to any specific game's assets.
         HICON appIcon = ::LoadIcon(hInstance, "AppIcon");
 
         WNDCLASSEX wndClass{
