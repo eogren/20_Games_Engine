@@ -1,6 +1,6 @@
 #pragma once
 
-#include "math/Color.h"
+#include "math/color.h"
 #include "volk.h"
 
 #include <array>

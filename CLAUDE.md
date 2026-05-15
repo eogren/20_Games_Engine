@@ -53,7 +53,7 @@ Specific internals (frame sync mechanism, descriptor strategy, pipeline cache sh
 
 ## Testing isolation
 
-Single `engine/` target keeps things simple, but discipline matters: **a file's includes should match its responsibility.** `Math.h` doesn't `#include <vulkan/vulkan.h>`; `Renderer.cpp` does. Test files inherit the same discipline — math tests must not transitively pull in Vulkan types. The engine target *links* Vulkan, but individual files only include what they need.
+Single `engine/` target keeps things simple, but discipline matters: **a file's includes should match its responsibility.** `math.h` doesn't `#include <vulkan/vulkan.h>`; `renderer.cpp` does. Test files inherit the same discipline — math tests must not transitively pull in Vulkan types. The engine target *links* Vulkan, but individual files only include what they need.
 
 If render code starts leaking into game-logic or math tests, that's the signal to split engine into `engine_core` (no Vulkan) + `engine_render` (Vulkan). Until then, single target is fine.
 
