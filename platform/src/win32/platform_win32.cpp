@@ -41,14 +41,19 @@ namespace platform
 
     Platform::Platform(std::string_view windowName) : impl_(std::make_unique<Impl>())
     {
+        HINSTANCE hInstance = ::GetModuleHandle(nullptr);
+        HICON appIcon = ::LoadIcon(hInstance, "AppIcon");
+
         WNDCLASSEX wndClass{
             .cbSize = sizeof(WNDCLASSEX),
             .lpfnWndProc = &wndProcThunk,
-            .hInstance = ::GetModuleHandle(nullptr),
+            .hInstance = hInstance,
+            .hIcon = appIcon,
             // Without this the launch-time wait cursor sticks over the client
             // area until another window forces a change.
             .hCursor = ::LoadCursor(nullptr, IDC_ARROW),
             .lpszClassName = "GameWindowClass",
+            .hIconSm = appIcon,
         };
 
         auto windowClass = ::RegisterClassEx(&wndClass);
@@ -58,7 +63,7 @@ namespace platform
         std::string nameZ(windowName);
         impl_->wnd =
             ::CreateWindow(MAKEINTATOM(windowClass), nameZ.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                           800, 600, nullptr, nullptr, ::GetModuleHandle(nullptr), static_cast<LPVOID>(impl_.get()));
+                           800, 600, nullptr, nullptr, hInstance, static_cast<LPVOID>(impl_.get()));
         WIN32_CHECK(impl_->wnd);
     }
 
