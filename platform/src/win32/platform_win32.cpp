@@ -61,9 +61,9 @@ namespace platform
 
         // CreateWindow needs a null-terminated string; string_view doesn't promise one.
         std::string nameZ(windowName);
-        impl_->wnd = ::CreateWindow(MAKEINTATOM(windowClass), nameZ.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
-                                    CW_USEDEFAULT, 800, 600, nullptr, nullptr, hInstance,
-                                    static_cast<LPVOID>(impl_.get()));
+        impl_->wnd =
+            ::CreateWindow(MAKEINTATOM(windowClass), nameZ.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+                           800, 600, nullptr, nullptr, hInstance, static_cast<LPVOID>(impl_.get()));
         WIN32_CHECK(impl_->wnd);
     }
 
