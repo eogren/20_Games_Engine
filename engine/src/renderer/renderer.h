@@ -75,7 +75,29 @@ namespace renderer
         Renderer& operator=(Renderer&&) noexcept;
         ~Renderer();
 
-        // draw API lands here.
+        // Stateful clear color: the next beginFrame() and every one after will
+        // clear the swapchain image to this color until set again. Placeholder
+        // for the proper Camera/viewport API later (CLAUDE.md > "Renderer
+        // design": workflow extracted on top of substrate after 2–3 games).
+        void setClearColor(float r, float g, float b, float a = 1.0f) noexcept;
+
+        // Begin a frame: wait on the frame-in-flight fence, acquire the next
+        // swapchain image, open the command buffer, transition the image to
+        // COLOR_ATTACHMENT_OPTIMAL, and start dynamic rendering with a clear
+        // to the stored color.
+        //
+        // Returns true if rendering proceeds this frame. Returns false when
+        // the swapchain is stale (VK_ERROR_OUT_OF_DATE_KHR on acquire) and
+        // was recreated transparently — caller must skip endFrame() this tick.
+        // Unrecoverable errors (fence wait / command buffer reset failures)
+        // abort via VK_CHECK.
+        bool beginFrame();
+
+        // End a frame: close dynamic rendering, transition the image to
+        // PRESENT_SRC_KHR, submit, present. Must only be called after a
+        // beginFrame() that returned true. Recreates the swapchain on
+        // VK_ERROR_OUT_OF_DATE_KHR / VK_SUBOPTIMAL_KHR from present.
+        void endFrame();
 
     private:
         Renderer(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, VkSurfaceKHR surface,
@@ -123,5 +145,15 @@ namespace renderer
         // waits on the semaphore that the submit for *this* image signaled, and
         // frame-in-flight count doesn't match image count in general.
         std::vector<VkSemaphore> renderCompleteSemaphores;
+        // Stateful clear color (see setClearColor). Black opaque is a safe
+        // default — first frame with no game-side call still produces a valid
+        // image rather than reading from an uninitialized union member.
+        VkClearColorValue clearColor_{.float32 = {0.0f, 0.0f, 0.0f, 1.0f}};
+        // Which MAX_FRAMES_IN_FLIGHT slot is active this frame; rotates after
+        // every successful present.
+        uint32_t frameIndex_ = 0;
+        // Swapchain image picked by the current beginFrame; only meaningful
+        // between beginFrame and endFrame.
+        uint32_t imageIndex_ = 0;
     };
 } // namespace renderer

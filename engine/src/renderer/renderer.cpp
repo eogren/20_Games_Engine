@@ -2,13 +2,17 @@
 //
 // One-time setup (RendererInstance, bindSurface, swapchain recreate) lives
 // in renderer_init.cpp; this file owns the Renderer's move/dtor/destroy_
-// plus the (forthcoming) beginFrame/endFrame/draw API.
+// plus the beginFrame/endFrame API (and forthcoming draw API).
 
 #include "renderer/renderer.h"
 
+#include <cstdint>
 #include <utility>
 
+#include <spdlog/spdlog.h>
+
 #include "volk.h"
+#include "vk_check.h"
 
 namespace renderer
 {
@@ -75,7 +79,8 @@ namespace renderer
           swapchainImageViews_(std::move(other.swapchainImageViews_)), commandPool_(other.commandPool_),
           commandBuffers_(other.commandBuffers_), fences(other.fences),
           imageAcquiredSemaphores(other.imageAcquiredSemaphores),
-          renderCompleteSemaphores(std::move(other.renderCompleteSemaphores))
+          renderCompleteSemaphores(std::move(other.renderCompleteSemaphores)), clearColor_(other.clearColor_),
+          frameIndex_(other.frameIndex_), imageIndex_(other.imageIndex_)
     {
         other.instance_ = VK_NULL_HANDLE;
         other.debugMessenger_ = VK_NULL_HANDLE;
@@ -113,6 +118,9 @@ namespace renderer
             fences = other.fences;
             imageAcquiredSemaphores = other.imageAcquiredSemaphores;
             renderCompleteSemaphores = std::move(other.renderCompleteSemaphores);
+            clearColor_ = other.clearColor_;
+            frameIndex_ = other.frameIndex_;
+            imageIndex_ = other.imageIndex_;
             other.instance_ = VK_NULL_HANDLE;
             other.debugMessenger_ = VK_NULL_HANDLE;
             other.surface_ = VK_NULL_HANDLE;
@@ -131,5 +139,190 @@ namespace renderer
     Renderer::~Renderer()
     {
         destroy_();
+    }
+
+    void Renderer::setClearColor(float r, float g, float b, float a) noexcept
+    {
+        clearColor_.float32[0] = r;
+        clearColor_.float32[1] = g;
+        clearColor_.float32[2] = b;
+        clearColor_.float32[3] = a;
+    }
+
+    bool Renderer::beginFrame()
+    {
+        // Wait for the previous submit using this slot's resources to retire.
+        // The fence was created SIGNALED in createFrameSync, so frame 0
+        // returns immediately on the first call.
+        VK_CHECK(vkWaitForFences(device_, 1, &fences[frameIndex_], VK_TRUE, UINT64_MAX));
+
+        uint32_t imageIndex = 0;
+        const VkResult acqRes = vkAcquireNextImageKHR(
+            device_, swapchain_, UINT64_MAX, imageAcquiredSemaphores[frameIndex_], VK_NULL_HANDLE, &imageIndex);
+        if (acqRes == VK_ERROR_OUT_OF_DATE_KHR)
+        {
+            // Don't reset the fence — nothing was submitted that would re-signal
+            // it, so leaving it signaled keeps next frame's wait honest.
+            if (auto r = recreateSwapchain_(extent_); !r)
+            {
+                spdlog::error("[vulkan] swapchain recreate after OUT_OF_DATE on acquire failed: {}",
+                              vkResultString(r.error()));
+            }
+            return false;
+        }
+        // SUBOPTIMAL_KHR is a success — the semaphore got signaled and we can
+        // still render this frame. Let the present-side check trigger recreate.
+        if (acqRes != VK_SUCCESS && acqRes != VK_SUBOPTIMAL_KHR) VK_CHECK(acqRes);
+        imageIndex_ = imageIndex;
+
+        // Only reset the fence after acquire commits — otherwise an early
+        // OUT_OF_DATE bail would leave us with an unsignaled fence and no
+        // submission coming to signal it, deadlocking the next wait.
+        VK_CHECK(vkResetFences(device_, 1, &fences[frameIndex_]));
+
+        const VkCommandBuffer cb = commandBuffers_[frameIndex_];
+        VK_CHECK(vkResetCommandBuffer(cb, 0));
+        const VkCommandBufferBeginInfo bi{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+        VK_CHECK(vkBeginCommandBuffer(cb, &bi));
+
+        // UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL. UNDEFINED on the old layout is
+        // fine because LOAD_OP_CLEAR discards prior contents — we don't need to
+        // preserve whatever the swapchain image held last time around.
+        const VkImageMemoryBarrier2 toColor{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = 0,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = swapchainImages_[imageIndex_],
+            .subresourceRange =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+        };
+        const VkDependencyInfo depBegin{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &toColor,
+        };
+        vkCmdPipelineBarrier2(cb, &depBegin);
+
+        const VkRenderingAttachmentInfo colorAttachment{
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = swapchainImageViews_[imageIndex_],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .resolveMode = VK_RESOLVE_MODE_NONE,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = {.color = clearColor_},
+        };
+        const VkRenderingInfo ri{
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = {{0, 0}, extent_},
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &colorAttachment,
+        };
+        vkCmdBeginRendering(cb, &ri);
+        return true;
+    }
+
+    void Renderer::endFrame()
+    {
+        const VkCommandBuffer cb = commandBuffers_[frameIndex_];
+
+        vkCmdEndRendering(cb);
+
+        // COLOR_ATTACHMENT_OPTIMAL -> PRESENT_SRC_KHR. dst stage NONE (paired
+        // with a semaphore signal anyway) is the sync2-idiomatic way to say
+        // "the present engine takes it from here."
+        const VkImageMemoryBarrier2 toPresent{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_NONE,
+            .dstAccessMask = 0,
+            .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = swapchainImages_[imageIndex_],
+            .subresourceRange =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+        };
+        const VkDependencyInfo depEnd{
+            .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+            .imageMemoryBarrierCount = 1,
+            .pImageMemoryBarriers = &toPresent,
+        };
+        vkCmdPipelineBarrier2(cb, &depEnd);
+
+        VK_CHECK(vkEndCommandBuffer(cb));
+
+        const VkSemaphoreSubmitInfo waitSem{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = imageAcquiredSemaphores[frameIndex_],
+            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        };
+        const VkSemaphoreSubmitInfo signalSem{
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+            .semaphore = renderCompleteSemaphores[imageIndex_],
+            .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        };
+        const VkCommandBufferSubmitInfo cbi{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+            .commandBuffer = cb,
+        };
+        const VkSubmitInfo2 si{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+            .waitSemaphoreInfoCount = 1,
+            .pWaitSemaphoreInfos = &waitSem,
+            .commandBufferInfoCount = 1,
+            .pCommandBufferInfos = &cbi,
+            .signalSemaphoreInfoCount = 1,
+            .pSignalSemaphoreInfos = &signalSem,
+        };
+        VK_CHECK(vkQueueSubmit2(graphicsQueue_, 1, &si, fences[frameIndex_]));
+
+        const VkPresentInfoKHR pi{
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &renderCompleteSemaphores[imageIndex_],
+            .swapchainCount = 1,
+            .pSwapchains = &swapchain_,
+            .pImageIndices = &imageIndex_,
+        };
+        const VkResult presRes = vkQueuePresentKHR(graphicsQueue_, &pi);
+        if (presRes == VK_ERROR_OUT_OF_DATE_KHR || presRes == VK_SUBOPTIMAL_KHR)
+        {
+            if (auto r = recreateSwapchain_(extent_); !r)
+            {
+                spdlog::error("[vulkan] swapchain recreate after {} on present failed: {}", vkResultString(presRes),
+                              vkResultString(r.error()));
+            }
+        }
+        else if (presRes != VK_SUCCESS)
+        {
+            VK_CHECK(presRes);
+        }
+
+        frameIndex_ = (frameIndex_ + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 } // namespace renderer
