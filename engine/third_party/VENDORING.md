@@ -1,6 +1,9 @@
-# Vendoring
+# Vendoring (engine layer)
 
-Single-file / single-header dependencies are vendored directly here.
+Single-file / single-header dependencies shared across the engine are
+vendored directly here. Platform-specific deps (e.g. Win32 input libs)
+live under `platform/third_party/` — see `platform/third_party/VENDORING.md`.
+
 Pinning policy: tag-pinned where upstream tags exist; record exact tag
 and commit SHA so a re-download produces byte-identical files. Update
 by re-running the download with a newer tag and recording the new
