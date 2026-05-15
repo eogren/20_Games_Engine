@@ -438,6 +438,11 @@ namespace renderer
         if (hasLayer(*supportedLayers, "VK_LAYER_KHRONOS_validation"))
         {
             layers.push_back("VK_LAYER_KHRONOS_validation");
+            spdlog::info("[vulkan] validation layer enabled");
+        }
+        else
+        {
+            spdlog::info("[vulkan] VK_LAYER_KHRONOS_validation not present, skipping");
         }
 #endif
 
