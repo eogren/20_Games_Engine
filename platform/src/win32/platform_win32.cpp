@@ -45,11 +45,8 @@ namespace platform
             .cbSize = sizeof(WNDCLASSEX),
             .lpfnWndProc = &wndProcThunk,
             .hInstance = ::GetModuleHandle(nullptr),
-            // Without an explicit hCursor the OS doesn't reset the cursor as it
-            // crosses into the client area, so the launch-time wait cursor
-            // sticks until another window forces a change. IDC_ARROW gives the
-            // expected idle-pointer behavior; games that hide or replace the
-            // cursor can do so on top.
+            // Without this the launch-time wait cursor sticks over the client
+            // area until another window forces a change.
             .hCursor = ::LoadCursor(nullptr, IDC_ARROW),
             .lpszClassName = "GameWindowClass",
         };
