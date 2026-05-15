@@ -1,5 +1,6 @@
 #pragma once
 
+#include "math/Color.h"
 #include "volk.h"
 
 #include <array>
@@ -79,7 +80,7 @@ namespace renderer
         // clear the swapchain image to this color until set again. Placeholder
         // for the proper Camera/viewport API later (CLAUDE.md > "Renderer
         // design": workflow extracted on top of substrate after 2–3 games).
-        void setClearColor(float r, float g, float b, float a = 1.0f) noexcept;
+        void setClearColor(engine::Color color) noexcept;
 
         // Begin a frame: wait on the frame-in-flight fence, acquire the next
         // swapchain image, open the command buffer, transition the image to

@@ -21,7 +21,7 @@ int main()
 
     // Dark navy — placeholder for game-controlled clear color until a real
     // Camera/scene API supersedes this stateful setter on the renderer.
-    eng.renderer().setClearColor(0.05f, 0.08f, 0.18f);
+    eng.renderer().setClearColor(engine::Color::rgb(0.05f, 0.08f, 0.18f));
 
     eng.run();
     return 0;
