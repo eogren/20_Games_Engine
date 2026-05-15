@@ -8,11 +8,7 @@ namespace engine
 {
 
     // Linear-space RGBA color in [0,1] per channel. Storage is RGB-internal;
-    // HSV is a construction-and-manipulation convenience. The HSV path makes
-    // single-axis effects natural — "brighter over time" is a bump on V, "hue
-    // drift" is a bump on H — where the same effects in RGB would require
-    // coordinated multi-channel scaling that desaturates toward white and
-    // drifts hue if applied unevenly.
+    // HSV is a construction-and-manipulation convenience.
     class Color
     {
     public:
@@ -27,10 +23,7 @@ namespace engine
         }
 
         // Construct from HSV(A) where all three axes are normalized to [0,1).
-        // Hue wraps modulo 1.0, so 0.0 and 1.0 are both red. Uniform [0,1)
-        // ranges across h/s/v match the renderer's [0,1] RGB convention; if
-        // a degree-based API ever feels more natural, add a `Color::hsv_deg`
-        // helper rather than re-typing the canonical one.
+        // Hue wraps modulo 1.0, so 0.0 and 1.0 are both red.
         static Color hsv(float h, float s, float v, float a = 1.0f);
 
         static constexpr Color black()
