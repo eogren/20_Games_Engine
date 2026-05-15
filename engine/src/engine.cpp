@@ -35,11 +35,20 @@ namespace engine
 
     void Engine::run()
     {
+        // Precondition: initRenderer() succeeded. The explicit has_value
+        // check pins optional access into a single proven-engaged site so
+        // the loop body operates on a plain reference.
+        if (!renderer_.has_value()) return;
+        auto& r = *renderer_;
         while (!platform_.shouldClose())
         {
             platform_.pollEvents();
-            // renderer_->beginFrame(...), game_.update(ctx, dt), renderer_->endFrame(),
-            // input_.endFrame() land here as those layers do (CLAUDE.md > "Frame ordering").
+            // game_.update(ctx, dt) and input_.endFrame() land between begin
+            // and end as those layers come online (CLAUDE.md > "Frame ordering").
+            // beginFrame returns false when it had to recreate the swapchain
+            // this tick — skip endFrame and re-enter the loop so the platform
+            // can drain whatever events drove the resize before we try again.
+            if (r.beginFrame()) r.endFrame();
         }
     }
 

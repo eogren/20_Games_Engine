@@ -1,8 +1,4 @@
 // Pong — entry point.
-//
-// At scaffold time this just proves that engine + platform link into an
-// executable. Win32 window creation + Vulkan instance + game loop all
-// land in follow-up commits.
 
 #include "engine.h"
 #include "log/Log.h"
@@ -22,6 +18,10 @@ int main()
         spdlog::error("Renderer init failed: {}", static_cast<int>(r.error()));
         return 1;
     }
+
+    // Dark navy — placeholder for game-controlled clear color until a real
+    // Camera/scene API supersedes this stateful setter on the renderer.
+    eng.renderer().setClearColor(0.05f, 0.08f, 0.18f);
 
     eng.run();
     return 0;
