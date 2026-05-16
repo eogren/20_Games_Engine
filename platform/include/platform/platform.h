@@ -1,5 +1,8 @@
 #pragma once
 
+#include "input.h"
+
+#include <bitset>
 #include <memory>
 #include <string_view>
 
@@ -41,6 +44,9 @@ namespace platform
         // returns once the message queue is empty. Engine calls this once per
         // frame at the top of its loop (see CLAUDE.md > "Frame ordering").
         void pollEvents();
+
+        // Return the set of keys that are currently held down.
+        std::bitset<static_cast<size_t>(KeyCode::KeyCount)> pollPressedKeys();
 
         // True once the OS has told us to terminate (WM_QUIT on Win32). Engine
         // loops until this flips.
