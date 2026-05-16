@@ -1,5 +1,7 @@
 #pragma once
 
+#include "game.h"
+#include "input/input.h"
 #include "renderer/renderer.h"
 
 #include <expected>
@@ -30,10 +32,12 @@ namespace engine
 
         std::expected<void, VkResult> initRenderer(const std::string& appName);
 
-        // Per-frame loop. Returns when the platform reports it's time to exit.
-        // Frame ordering (see CLAUDE.md > "Frame ordering"): pollEvents at the
-        // top; renderer begin/end and game/input land as those layers do.
-        void run();
+        // Per-frame loop. Ticks `game` once per frame, returns when the
+        // platform reports it's time to exit. Frame ordering (CLAUDE.md >
+        // "Frame ordering"): pollEvents drains OS events, the keyboard
+        // snapshot folds into engine input state, then renderer begin/end
+        // brackets game.update.
+        void run(Game& game);
 
         // Valid only after initRenderer() succeeds.
         renderer::Renderer& renderer()
@@ -48,6 +52,7 @@ namespace engine
     private:
         platform::Platform& platform_;
         std::optional<renderer::Renderer> renderer_;
+        InputState input_state_;
     };
 
 } // namespace engine

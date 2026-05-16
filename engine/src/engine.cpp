@@ -3,6 +3,8 @@
 #include "platform/platform.h"
 #include "platform/surface.h"
 
+#include <chrono>
+
 namespace engine
 {
 
@@ -33,7 +35,7 @@ namespace engine
         return {};
     }
 
-    void Engine::run()
+    void Engine::run(Game& game)
     {
         // Precondition: initRenderer() succeeded. The explicit has_value
         // check pins optional access into a single proven-engaged site so
@@ -44,15 +46,39 @@ namespace engine
         // first beginFrame so the user's first sight of the client area is the
         // cleared first frame, not the empty pre-init fill.
         platform_.show();
+
+        // steady_clock is monotonic, immune to wall-clock adjustments — the
+        // right choice for a frame timer. First-tick dt is 0.0 by convention
+        // (no "previous frame" yet to measure against).
+        using Clock = std::chrono::steady_clock;
+        auto prev = Clock::now();
+        float dt = 0.0f;
+
         while (!platform_.shouldClose())
         {
             platform_.pollEvents();
-            // game_.update(ctx, dt) and input_.endFrame() land between begin
-            // and end as those layers come online (CLAUDE.md > "Frame ordering").
+            // Fold a fresh snapshot of currently-held keys into the engine's
+            // keyboard state. Runs after pollEvents so the underlying input
+            // source (GameInput on Win32) sees any state transitions the OS
+            // just delivered, and before game.update so the game sees this
+            // frame's edges.
+            input_state_.keyboard.update(platform_.pollPressedKeys());
+
             // beginFrame returns false when it had to recreate the swapchain
-            // this tick — skip endFrame and re-enter the loop so the platform
-            // can drain whatever events drove the resize before we try again.
-            if (r.beginFrame()) r.endFrame();
+            // this tick — skip game.update and endFrame and re-enter the loop
+            // so the platform can drain whatever events drove the resize.
+            // Skipping the game tick on a swapchain rebuild keeps dt's
+            // backing measurement tied to ticks the game actually saw.
+            if (r.beginFrame())
+            {
+                GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r};
+                game.update(ctx, dt);
+                r.endFrame();
+
+                const auto now = Clock::now();
+                dt = std::chrono::duration<float>(now - prev).count();
+                prev = now;
+            }
         }
     }
 

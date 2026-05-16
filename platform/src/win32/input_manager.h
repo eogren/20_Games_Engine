@@ -1,35 +1,31 @@
 #pragma once
 #include "platform/input.h"
 
-#include <GameInput.h>
 #include <bitset>
-#include <vector>
-#include <wrl.h>
 
-namespace GameInput
+namespace platform::win32
 {
-    namespace v3
+    /**
+     * Win32 keyboard polling. Pulls currently-held keys from GetAsyncKeyState,
+     * maps the disambiguated Win32 virtual-key code into the engine's KeyCode
+     * enum, and returns a bitset snapshot.
+     *
+     * GetAsyncKeyState is a system-wide query — it reports key state regardless
+     * of which window has focus. That's fine for the single-window app shape
+     * we have today; if engine-driven games ever want background-input
+     * suppression we'd add an HWND foreground check here.
+     */
+    class InputManager
     {
-        struct IGameInput;
-    }
-} // namespace GameInput
+    public:
+        InputManager() = default;
+        ~InputManager() = default;
 
-namespace platform
-{
-    namespace win32
-    {
-        class InputManager
-        {
-        public:
-            InputManager();
-            ~InputManager();
+        InputManager(const InputManager&) = delete;
+        InputManager& operator=(const InputManager&) = delete;
+        InputManager(InputManager&&) = delete;
+        InputManager& operator=(InputManager&&) = delete;
 
-            std::bitset<static_cast<size_t>(KeyCode::KeyCount)> pollPressedKeys();
-
-        private:
-            Microsoft::WRL::ComPtr<GameInput::v3::IGameInput> gameInput_;
-            std::vector<GameInput::v3::GameInputKeyState> keyStates_;
-            APP_LOCAL_DEVICE_ID keyboardAggDevice_{};
-        };
-    } // namespace win32
-} // namespace platform
+        std::bitset<static_cast<size_t>(KeyCode::KeyCount)> pollPressedKeys();
+    };
+} // namespace platform::win32

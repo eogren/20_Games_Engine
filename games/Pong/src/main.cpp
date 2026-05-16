@@ -1,10 +1,43 @@
 // Pong — entry point.
 
 #include "engine.h"
+#include "game.h"
 #include "log/log.h"
 #include "platform/platform.h"
 
+#include <algorithm>
 #include <spdlog/spdlog.h>
+
+namespace
+{
+    // Paddles, ball, scoring will land here as the engine substrate (drawing
+    // API, audio) comes online. Today the game just owns its clear color and
+    // brightens/dims it with W/S — an interactive demo that exercises input
+    // and renderer access through GameContext end-to-end.
+    class Pong : public engine::Game
+    {
+    public:
+        void update(engine::GameContext& ctx, float dt) override
+        {
+            constexpr float kValueRate = 0.5f; // HSV value units per second held
+            if (ctx.keyboard.pressed(platform::KeyCode::KeyW))
+            {
+                clear_ = clear_.with_value(std::min(clear_.value() + kValueRate * dt, 1.0f));
+            }
+            if (ctx.keyboard.pressed(platform::KeyCode::KeyS))
+            {
+                clear_ = clear_.with_value(std::max(clear_.value() - kValueRate * dt, 0.0f));
+            }
+            ctx.renderer.setClearColor(clear_);
+        }
+
+    private:
+        // Dark navy starting state. The very first beginFrame uses the
+        // renderer's default (black) since update runs after begin; from
+        // frame 2 onward our setClearColor below is in effect.
+        engine::Color clear_ = engine::Color::rgb(0.05f, 0.08f, 0.18f);
+    };
+} // namespace
 
 int main()
 {
@@ -19,10 +52,7 @@ int main()
         return 1;
     }
 
-    // Dark navy — placeholder for game-controlled clear color until a real
-    // Camera/scene API supersedes this stateful setter on the renderer.
-    eng.renderer().setClearColor(engine::Color::rgb(0.05f, 0.08f, 0.18f));
-
-    eng.run();
+    Pong pong;
+    eng.run(pong);
     return 0;
 }
