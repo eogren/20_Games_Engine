@@ -52,9 +52,6 @@ target_link_libraries(engine
         PRIVATE engine_compile_options
 )
 
-# Engine substrate shaders. slangc invocation defined in root CMakeLists.txt;
-# outputs land in ${CMAKE_BINARY_DIR}/shaders/<name>.spv. Loading them into
-# VkShaderModule arrives in the follow-up PR.
 add_slang_shaders(
         TARGET engine
         SOURCES shaders/quad.slang

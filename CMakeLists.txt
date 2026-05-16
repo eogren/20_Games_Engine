@@ -28,9 +28,7 @@ find_package(Vulkan 1.3 REQUIRED)
 
 # slangc — Slang → SPIR-V compiler, ships in the Vulkan SDK since 1.3.296.
 # Hinted by $VULKAN_SDK so a fresh shell that exported the SDK var (as
-# build.ps1 expects) picks it up without further configuration. REQUIRED
-# fails configure with a clear message if the SDK is too old or VULKAN_SDK
-# wasn't exported.
+# build.ps1 expects) picks it up without further configuration.
 find_program(SLANGC_EXECUTABLE
     NAMES slangc
     HINTS ENV VULKAN_SDK
@@ -40,15 +38,9 @@ find_program(SLANGC_EXECUTABLE
 
 # add_slang_shaders(TARGET <tgt> SOURCES <a.slang> [<b.slang> ...])
 #
-# Wires each .slang source into a build-time slangc invocation producing
-# ${CMAKE_BINARY_DIR}/shaders/<basename>.spv. Each .slang file may carry
-# multiple [shader("...")]-tagged entry points (vertex + fragment + compute);
-# slangc bakes them into one SPIR-V module and pipeline creation picks the
-# entry point by name at runtime.
-#
-# The generated .spv files become a build dependency of <tgt> via a phony
-# <tgt>_shaders custom target, so building <tgt> triggers shader recompilation
-# when sources change.
+# Each .slang file may carry multiple [shader("...")]-tagged entry points
+# (vertex + fragment + compute); slangc bakes them into one SPIR-V module
+# and pipeline creation picks the entry point by name at runtime.
 function(add_slang_shaders)
     cmake_parse_arguments(ARG "" "TARGET" "SOURCES" ${ARGN})
 

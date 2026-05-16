@@ -1,9 +1,8 @@
 // Substrate quad shader.
 //
-// Vertex stage emits a unit-quad triangle list keyed off SV_VertexID alone —
-// no vertex buffer, no descriptor set. Fragment stage emits a placeholder
-// color. Push constants for per-draw rect + color land in the follow-up PR
-// that actually wires the pipeline and the drawQuad call.
+// Geometry comes from SV_VertexID alone — no vertex buffer, no descriptor
+// set. Lets the slangc -> .spv path be exercised before any buffer-allocation
+// machinery exists.
 
 struct VSOut {
     float4 pos : SV_Position;
@@ -17,8 +16,6 @@ VSOut vertMain(uint vid : SV_VertexID) {
         float2(0, 1), float2(1, 0), float2(1, 1)
     };
     float2 c = corners[vid];
-    // Half-size center-of-screen placement. The real push-constant-driven
-    // rect arrives in the next PR.
     float2 ndc = (c * 2.0 - 1.0) * 0.5;
     VSOut o;
     o.pos = float4(ndc, 0.0, 1.0);
