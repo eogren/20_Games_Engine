@@ -84,6 +84,12 @@ namespace renderer
         // design": workflow extracted on top of substrate after 2–3 games).
         void setClearColor(engine::Color color) noexcept;
 
+        // Override the coordinate space for drawQuad. Call once per update()
+        // before any drawQuad calls; stays in effect until the next beginFrame
+        // resets it to pixel space. Typical callers pass fixed game dimensions
+        // (e.g. 800 x 600) so coordinates are independent of window size.
+        void setProjectionExtent(float w, float h) noexcept;
+
         // Begin a frame: wait on the frame-in-flight fence, acquire the next
         // swapchain image, open the command buffer, transition the image to
         // COLOR_ATTACHMENT_OPTIMAL, and start dynamic rendering with a clear
@@ -102,9 +108,10 @@ namespace renderer
         // VK_ERROR_OUT_OF_DATE_KHR / VK_SUBOPTIMAL_KHR from present.
         void endFrame();
 
-        // Draw a solid-color axis-aligned rectangle in pixel coordinates with
-        // (0, 0) at the top-left of the swapchain image. Must be called
-        // between a beginFrame that returned true and the matching endFrame.
+        // Draw a solid-color axis-aligned rectangle in the coordinate space set
+        // by setProjectionExtent (or pixel coordinates if it was never called),
+        // with (0, 0) at the top-left. Must be called between a beginFrame that
+        // returned true and the matching endFrame.
         void drawQuad(float x, float y, float w, float h, engine::Color color);
 
         [[nodiscard]] VkExtent2D viewportExtent() const noexcept
@@ -173,8 +180,8 @@ namespace renderer
         VkShaderModule quadShaderModule_ = VK_NULL_HANDLE;
         VkPipelineLayout quadPipelineLayout_ = VK_NULL_HANDLE;
         VkPipeline quadPipeline_ = VK_NULL_HANDLE;
-        // Pixel-space -> Vulkan NDC projection, rebuilt in beginFrame so a
-        // window resize is reflected on the next frame.
+        // Coordinate-space -> Vulkan NDC projection. beginFrame resets it to
+        // pixel space; setProjectionExtent overrides it before any drawQuad.
         glm::mat4 viewProj_{1.0f};
         // Lazy bind on first drawQuad of the frame; reset in beginFrame.
         bool quadPipelineBoundThisFrame_ = false;
