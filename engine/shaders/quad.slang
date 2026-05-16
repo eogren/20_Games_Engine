@@ -4,9 +4,6 @@
 // no vertex buffer, no descriptor set. Fragment stage emits a placeholder
 // color. Push constants for per-draw rect + color land in the follow-up PR
 // that actually wires the pipeline and the drawQuad call.
-//
-// Built by add_slang_shaders() (root CMakeLists.txt). slangc bakes both
-// entry points into one SPIR-V module at ${CMAKE_BINARY_DIR}/shaders/quad.spv.
 
 struct VSOut {
     float4 pos : SV_Position;
