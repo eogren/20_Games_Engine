@@ -35,3 +35,13 @@ VSOut vertMain(uint vid : SV_VertexID) {
 float4 fragMain(VSOut input) : SV_Target {
     return pc.color;
 }
+
+// SDF disc: discard pixels outside the unit circle inscribed in [0,1]x[0,1].
+// The caller sizes the bounding quad to exactly 2r×2r so the circle always
+// inscribes at dot(d,d)==0.25 in UV space regardless of world-space radius.
+[shader("fragment")]
+float4 fragDisc(VSOut input) : SV_Target {
+    float2 d = input.uv - float2(0.5, 0.5);
+    if (dot(d, d) > 0.25) discard;
+    return pc.color;
+}
