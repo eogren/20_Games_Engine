@@ -19,9 +19,7 @@ namespace
         static constexpr float WIDTH = kGameW * 0.02f;
         static constexpr float VEL_MAX = kGameH * 0.20f;
 
-        // Top left y-coordinate of the paddle
         float yPos;
-        float yVelocity;
     };
 
     class Pong : public engine::Game
@@ -29,32 +27,30 @@ namespace
     public:
         Pong()
         {
-            paddle_ = {
-                .yPos = PaddleState::HEIGHT / 2 + 20,
-                .yVelocity = 0,
-            };
+            paddle_ = {.yPos = PaddleState::HEIGHT / 2 + 20};
         }
 
-        void update(engine::GameContext& ctx, float dt) override
+        void fixedUpdate(engine::FixedUpdateContext& ctx, float fixedDt) override
+        {
+            float vel = 0.0f;
+            if (ctx.keyboard.pressed(platform::KeyCode::KeyW))
+            {
+                vel = -PaddleState::VEL_MAX;
+            }
+            if (ctx.keyboard.pressed(platform::KeyCode::KeyS))
+            {
+                vel += PaddleState::VEL_MAX;
+            }
+            paddle_.yPos = std::clamp(paddle_.yPos + vel * fixedDt, 0.0f, kGameH - PaddleState::HEIGHT);
+        }
+
+        void update(engine::GameContext& ctx, float /*dt*/) override
         {
             ctx.renderer.setProjectionExtent(kGameW, kGameH);
             ctx.renderer.setClearColor(clear_);
 
             constexpr engine::Color kWhite = engine::Color::rgb(1.0f, 1.0f, 1.0f);
 
-            paddle_.yVelocity = 0;
-            if (ctx.keyboard.pressed(platform::KeyCode::KeyW))
-            {
-                paddle_.yVelocity = -PaddleState::VEL_MAX;
-            }
-
-            if (ctx.keyboard.pressed(platform::KeyCode::KeyS))
-            {
-                paddle_.yVelocity += PaddleState::VEL_MAX;
-            }
-            paddle_.yPos = std::clamp(paddle_.yPos + paddle_.yVelocity * dt, 0.0f, kGameH - PaddleState::HEIGHT);
-
-            // Placeholder paddle near the top-left.
             ctx.renderer.drawQuad(50.0f, paddle_.yPos, PaddleState::WIDTH, PaddleState::HEIGHT, kWhite);
 
             // Dashed center line — n dashes centered vertically so margins are equal.
