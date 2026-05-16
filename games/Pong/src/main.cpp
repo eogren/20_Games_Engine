@@ -20,6 +20,7 @@ namespace
         static constexpr float VEL_MAX = kGameH * 0.20f;
 
         float yPos;
+        float yPosPrev;
     };
 
     class Pong : public engine::Game
@@ -27,7 +28,8 @@ namespace
     public:
         Pong()
         {
-            paddle_ = {.yPos = PaddleState::HEIGHT / 2 + 20};
+            const float startY = PaddleState::HEIGHT / 2 + 20;
+            paddle_ = {.yPos = startY, .yPosPrev = startY};
         }
 
         void fixedUpdate(engine::FixedUpdateContext& ctx, float fixedDt) override
@@ -41,6 +43,7 @@ namespace
             {
                 vel += PaddleState::VEL_MAX;
             }
+            paddle_.yPosPrev = paddle_.yPos;
             paddle_.yPos = std::clamp(paddle_.yPos + vel * fixedDt, 0.0f, kGameH - PaddleState::HEIGHT);
         }
 
@@ -51,7 +54,8 @@ namespace
 
             constexpr engine::Color kWhite = engine::Color::rgb(1.0f, 1.0f, 1.0f);
 
-            ctx.renderer.drawQuad(50.0f, paddle_.yPos, PaddleState::WIDTH, PaddleState::HEIGHT, kWhite);
+            const float yRender = std::lerp(paddle_.yPosPrev, paddle_.yPos, ctx.alpha);
+            ctx.renderer.drawQuad(50.0f, yRender, PaddleState::WIDTH, PaddleState::HEIGHT, kWhite);
 
             // Dashed center line — n dashes centered vertically so margins are equal.
             constexpr float kDashW = 4.0f;
