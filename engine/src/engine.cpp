@@ -48,11 +48,12 @@ namespace engine
         platform_.show();
 
         // steady_clock is monotonic, immune to wall-clock adjustments — the
-        // right choice for a frame timer. First-tick dt is 0.0 by convention
-        // (no "previous frame" yet to measure against).
+        // right choice for a frame timer.
         using Clock = std::chrono::steady_clock;
         auto prev = Clock::now();
-        float dt = 0.0f;
+        float accumulator = 0.0f;
+        // 60 Hz fixed step matches Bevy's FixedUpdate default cadence.
+        static constexpr float kFixedDt = 1.0f / 60.0f;
 
         while (!platform_.shouldClose())
         {
@@ -65,19 +66,31 @@ namespace engine
             input_state_.keyboard.update(platform_.pollPressedKeys());
 
             // beginFrame returns false when it had to recreate the swapchain
-            // this tick — skip game.update and endFrame and re-enter the loop
+            // this tick — skip simulation and endFrame and re-enter the loop
             // so the platform can drain whatever events drove the resize.
-            // Skipping the game tick on a swapchain rebuild keeps dt's
-            // backing measurement tied to ticks the game actually saw.
+            // Keeping time measurement inside this block means resize frames
+            // don't accumulate phantom time that would cause a burst of fixed
+            // steps on the next real frame.
             if (r.beginFrame())
             {
-                GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r};
-                game.update(ctx, dt);
-                r.endFrame();
-
                 const auto now = Clock::now();
-                dt = std::chrono::duration<float>(now - prev).count();
+                const float elapsed = std::chrono::duration<float>(now - prev).count();
                 prev = now;
+                // Cap prevents a spiral of death after a long stall (e.g. a
+                // debugger break or OS suspend) from triggering a burst of
+                // catch-up steps that locks the frame for another long stall.
+                accumulator += std::min(elapsed, kFixedDt * 4.0f);
+
+                while (accumulator >= kFixedDt)
+                {
+                    FixedUpdateContext fctx{.keyboard = input_state_.keyboard};
+                    game.fixedUpdate(fctx, kFixedDt);
+                    accumulator -= kFixedDt;
+                }
+
+                GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r};
+                game.update(ctx, elapsed);
+                r.endFrame();
             }
         }
     }
