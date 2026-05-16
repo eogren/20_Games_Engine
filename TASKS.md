@@ -23,21 +23,23 @@ warm-up at any point.
   there's no caller in the new tree yet to design a wrapper around.
   The renderer port will pick an ortho shape (incl. Vulkan Y-flip
   handling) in context.
-- [ ] **First Volk init + `VkInstance` creation** in engine. Proves
+- [x] **First Volk init + `VkInstance` creation** in engine. Proves
   the Vulkan SDK + Volk loader chain works end-to-end without needing
   a window. `vulkaninfo`-equivalent output is enough confirmation.
   Independent of Win32.
-- [ ] **Win32 window in `platform/`.** Visible `HWND` with a pumping
+- [x] **Win32 window in `platform/`.** Visible `HWND` with a pumping
   message loop, clean shutdown on `WM_CLOSE`. No Vulkan yet —
   developable in parallel with (2).
-- [ ] **Surface + swapchain + first cleared frame.** Where (2) and (3)
+- [x] **Surface + swapchain + first cleared frame.** Where (2) and (3)
   meet: `vkCreateWin32SurfaceKHR` from platform feeds engine's
   `VkSwapchainKHR`; engine clears the swapchain image to a solid color
   per frame and presents. First pixels on screen.
-- [ ] **First triangle through Slang → SPIR-V → Vulkan.** Wires up the
+- [x] **First quad through Slang → SPIR-V → Vulkan.** Wires up the
   `slangc` custom-command pipeline in CMake, a vertex+fragment Slang
   shader under `engine/shaders/`, a graphics pipeline, and a single
-  draw call.
+  draw call. Quad over triangle since Pong's paddles and ball are
+  all axis-aligned rectangles — the shape we'll reuse for most
+  entities, so make it the first shape that lands.
 - [ ] **Bring Pong gameplay up on the new renderer.** Paddles, ball,
   collision, score. The cpp/ Pong gameplay shape (see `cpp/TASKS.md`)
   ports over; the renderer underneath does not.

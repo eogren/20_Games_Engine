@@ -29,6 +29,11 @@ namespace
                 clear_ = clear_.with_value(std::max(clear_.value() - kValueRate * dt, 0.0f));
             }
             ctx.renderer.setClearColor(clear_);
+
+            // Placeholder paddle near the top-left so any Y-flip or
+            // origin-convention bug surfaces as a visible shift.
+            constexpr engine::Color paddle = engine::Color::rgb(1.0f, 1.0f, 1.0f);
+            ctx.renderer.drawQuad(50.0f, 100.0f, 20.0f, 120.0f, paddle);
         }
 
     private:

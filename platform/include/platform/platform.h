@@ -3,6 +3,7 @@
 #include "input.h"
 
 #include <bitset>
+#include <filesystem>
 #include <memory>
 #include <string_view>
 
@@ -59,5 +60,10 @@ namespace platform
     };
 
     const char* version();
+
+    // Directory containing the running executable. Used by engine code to
+    // resolve runtime assets (compiled SPIR-V, etc.) by absolute path rather
+    // than by cwd, which isn't reliable across launch methods on Windows.
+    std::filesystem::path executableDir();
 
 } // namespace platform

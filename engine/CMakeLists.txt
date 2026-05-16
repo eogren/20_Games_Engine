@@ -48,7 +48,7 @@ add_library(engine STATIC
 )
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine
-        PUBLIC volk vma spdlog::spdlog platform
+        PUBLIC volk vma spdlog::spdlog glm::glm platform
         PRIVATE engine_compile_options
 )
 
