@@ -12,15 +12,20 @@
 
 #include "renderer/renderer.h"
 
+#include "renderer/quad_push_constants.h"
+
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <expected>
+#include <fstream>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <platform/platform.h>
 #include <spdlog/spdlog.h>
 
 #include "volk.h"
@@ -216,8 +221,16 @@ namespace
                                         .queueFamilyIndex = physicalDevice.graphicsQueueIdx,
                                         .queueCount = 1,
                                         .pQueuePriorities = &qfpriorities};
+        // slangc emits the SPIR-V DrawParameters capability for any shader
+        // reading SV_VertexID (it routes through the BaseVertex-aware
+        // builtin), so the matching device feature must be enabled.
+        VkPhysicalDeviceVulkan11Features enabledVk11Features{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            .shaderDrawParameters = true,
+        };
         VkPhysicalDeviceVulkan12Features enabledVk12Features{.sType =
                                                                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+                                                             .pNext = &enabledVk11Features,
                                                              .descriptorIndexing = true,
                                                              .shaderSampledImageArrayNonUniformIndexing = true,
                                                              .descriptorBindingVariableDescriptorCount = true,
@@ -555,6 +568,9 @@ namespace renderer
         renderer.commandPool_ = cmd->pool;
         renderer.commandBuffers_ = cmd->buffers;
         if (auto r = renderer.recreateSwapchain_(extent); !r) return std::unexpected(r.error());
+        // Pipeline bakes the swapchain color format into VkPipelineRenderingCreateInfo,
+        // so it has to be built after the first swapchain exists.
+        if (auto r = renderer.buildQuadPipeline_(); !r) return std::unexpected(r.error());
         return renderer;
     }
 
@@ -707,6 +723,137 @@ namespace renderer
         spdlog::info("[vulkan] swapchain {}: {}x{}, {} images, format {}",
                      oldSwapchain == VK_NULL_HANDLE ? "created" : "recreated", extent_.width, extent_.height,
                      actualImageCount, static_cast<int>(swapchainFormat_));
+        return {};
+    }
+
+    // ---- Renderer::buildQuadPipeline_ --------------------------------------
+
+    std::expected<void, VkResult> Renderer::buildQuadPipeline_()
+    {
+        const auto spvPath = platform::executableDir() / "shaders" / "quad.spv";
+        std::ifstream spvFile(spvPath, std::ios::binary | std::ios::ate);
+        if (!spvFile)
+        {
+            spdlog::error("[vulkan] failed to open shader '{}'", spvPath.string());
+            return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+        }
+        const auto spvBytes = static_cast<std::streamsize>(spvFile.tellg());
+        // SPIR-V is a stream of 32-bit words; anything that isn't a positive
+        // multiple of 4 is empty, truncated, or not SPIR-V.
+        if (spvBytes <= 0 || (spvBytes % 4) != 0)
+        {
+            spdlog::error("[vulkan] '{}' is not a valid SPIR-V module (size {})", spvPath.string(), spvBytes);
+            return std::unexpected(VK_ERROR_INITIALIZATION_FAILED);
+        }
+        std::vector<uint32_t> spv(static_cast<std::size_t>(spvBytes) / 4);
+        spvFile.seekg(0);
+        spvFile.read(reinterpret_cast<char*>(spv.data()), spvBytes);
+
+        const VkShaderModuleCreateInfo smci{
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = static_cast<std::size_t>(spvBytes),
+            .pCode = spv.data(),
+        };
+        VK_TRY(vkCreateShaderModule(device_, &smci, nullptr, &quadShaderModule_));
+
+        // One range covering both stages — vertex reads viewProj+rect, fragment reads color.
+        const VkPushConstantRange pcRange{
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            .offset = 0,
+            .size = sizeof(QuadPushConstants),
+        };
+        const VkPipelineLayoutCreateInfo plci{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges = &pcRange,
+        };
+        VK_TRY(vkCreatePipelineLayout(device_, &plci, nullptr, &quadPipelineLayout_));
+
+        // Two entry points sharing one module — slangc bakes both
+        // [shader("vertex")] and [shader("fragment")] into a single .spv.
+        const std::array<VkPipelineShaderStageCreateInfo, 2> stages{{
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                .module = quadShaderModule_,
+                .pName = "vertMain",
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                .module = quadShaderModule_,
+                .pName = "fragMain",
+            },
+        }};
+        // No vertex input — shader expands SV_VertexID into corner positions.
+        const VkPipelineVertexInputStateCreateInfo vertexInput{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        };
+        const VkPipelineInputAssemblyStateCreateInfo inputAssembly{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        };
+        // Counts must be set even with dynamic state; the rects come from
+        // vkCmdSetViewport / vkCmdSetScissor each frame.
+        const VkPipelineViewportStateCreateInfo viewportState{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .viewportCount = 1,
+            .scissorCount = 1,
+        };
+        const VkPipelineRasterizationStateCreateInfo rasterization{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .polygonMode = VK_POLYGON_MODE_FILL,
+            // 2D primitives mix winding orders freely; not worth gating on.
+            .cullMode = VK_CULL_MODE_NONE,
+            .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+            .lineWidth = 1.0f,
+        };
+        const VkPipelineMultisampleStateCreateInfo multisample{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        };
+        const VkPipelineColorBlendAttachmentState blendAttachment{
+            .blendEnable = VK_FALSE,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+                              VK_COLOR_COMPONENT_A_BIT,
+        };
+        const VkPipelineColorBlendStateCreateInfo colorBlend{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .attachmentCount = 1,
+            .pAttachments = &blendAttachment,
+        };
+        constexpr std::array<VkDynamicState, 2> dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        const VkPipelineDynamicStateCreateInfo dynamicState{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            .dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+            .pDynamicStates = dynamicStates.data(),
+        };
+        // Dynamic rendering: the color attachment format is part of the
+        // pipeline state, chained via pNext instead of a VkRenderPass.
+        const VkPipelineRenderingCreateInfo renderingCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &swapchainFormat_,
+        };
+
+        const VkGraphicsPipelineCreateInfo gpci{
+            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .pNext = &renderingCreateInfo,
+            .stageCount = static_cast<uint32_t>(stages.size()),
+            .pStages = stages.data(),
+            .pVertexInputState = &vertexInput,
+            .pInputAssemblyState = &inputAssembly,
+            .pViewportState = &viewportState,
+            .pRasterizationState = &rasterization,
+            .pMultisampleState = &multisample,
+            .pColorBlendState = &colorBlend,
+            .pDynamicState = &dynamicState,
+            .layout = quadPipelineLayout_,
+        };
+        VK_TRY(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &gpci, nullptr, &quadPipeline_));
+
+        spdlog::info("[vulkan] quad pipeline built ({} push-constant bytes, color format {})",
+                     sizeof(QuadPushConstants), static_cast<int>(swapchainFormat_));
         return {};
     }
 } // namespace renderer

@@ -1,8 +1,16 @@
 // Substrate quad shader.
 //
-// Geometry comes from SV_VertexID alone — no vertex buffer, no descriptor
-// set. Lets the slangc -> .spv path be exercised before any buffer-allocation
-// machinery exists.
+// Six vertices expanded from SV_VertexID — no vertex buffer. The push-constant
+// `rect` places the unit square in pixel space; `viewProj` maps pixel space to
+// Vulkan NDC.
+
+struct PushConstants {
+    float4x4 viewProj;
+    float4 rect;   // (x, y, w, h) in pixel-space, top-left origin
+    float4 color;  // RGBA, linear; swapchain encodes to sRGB on present
+};
+
+[[vk::push_constant]] ConstantBuffer<PushConstants> pc;
 
 struct VSOut {
     float4 pos : SV_Position;
@@ -16,15 +24,14 @@ VSOut vertMain(uint vid : SV_VertexID) {
         float2(0, 1), float2(1, 0), float2(1, 1)
     };
     float2 c = corners[vid];
-    float2 ndc = (c * 2.0 - 1.0) * 0.5;
+    float2 pixelPos = pc.rect.xy + c * pc.rect.zw;
     VSOut o;
-    o.pos = float4(ndc, 0.0, 1.0);
+    o.pos = mul(pc.viewProj, float4(pixelPos, 0.0, 1.0));
     o.uv = c;
     return o;
 }
 
 [shader("fragment")]
 float4 fragMain(VSOut input) : SV_Target {
-    // Hot pink: obvious "placeholder, replace me" color if it ever lands on screen.
-    return float4(1.0, 0.0, 1.0, 1.0);
+    return pc.color;
 }

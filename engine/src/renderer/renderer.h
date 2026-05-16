@@ -3,6 +3,8 @@
 #include "math/color.h"
 #include "volk.h"
 
+#include <glm/mat4x4.hpp>
+
 #include <array>
 #include <expected>
 #include <span>
@@ -100,6 +102,11 @@ namespace renderer
         // VK_ERROR_OUT_OF_DATE_KHR / VK_SUBOPTIMAL_KHR from present.
         void endFrame();
 
+        // Draw a solid-color axis-aligned rectangle in pixel coordinates with
+        // (0, 0) at the top-left of the swapchain image. Must be called
+        // between a beginFrame that returned true and the matching endFrame.
+        void drawQuad(float x, float y, float w, float h, engine::Color color);
+
     private:
         Renderer(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, VkSurfaceKHR surface,
                  VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, uint32_t graphicsQueueIdx,
@@ -121,6 +128,12 @@ namespace renderer
         // entirely when surfaceCaps.currentExtent reports a definite size
         // (the usual Win32 case — surface dictates extent).
         std::expected<void, VkResult> recreateSwapchain_(VkExtent2D windowExtent);
+
+        // Called once from bindSurface after the swapchain exists — the color
+        // format is baked into the pipeline via dynamic rendering, so the
+        // pipeline would need a rebuild if the format ever changed across a
+        // recreate (not handled today; format is stable on typical Win32).
+        std::expected<void, VkResult> buildQuadPipeline_();
 
         VkInstance instance_ = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE; // VK_NULL_HANDLE in release
@@ -150,6 +163,16 @@ namespace renderer
         // default — first frame with no game-side call still produces a valid
         // image rather than reading from an uninitialized union member.
         VkClearColorValue clearColor_{.float32 = {0.0f, 0.0f, 0.0f, 1.0f}};
+        // One shader module covers both vertMain and fragMain entry points;
+        // the layout's single push-constant range is shared by both stages.
+        VkShaderModule quadShaderModule_ = VK_NULL_HANDLE;
+        VkPipelineLayout quadPipelineLayout_ = VK_NULL_HANDLE;
+        VkPipeline quadPipeline_ = VK_NULL_HANDLE;
+        // Pixel-space -> Vulkan NDC projection, rebuilt in beginFrame so a
+        // window resize is reflected on the next frame.
+        glm::mat4 viewProj_{1.0f};
+        // Lazy bind on first drawQuad of the frame; reset in beginFrame.
+        bool quadPipelineBoundThisFrame_ = false;
         // Which MAX_FRAMES_IN_FLIGHT slot is active this frame; rotates after
         // every successful present.
         uint32_t frameIndex_ = 0;

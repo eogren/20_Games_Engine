@@ -74,6 +74,19 @@ function(add_slang_shaders)
     add_dependencies(${ARG_TARGET} ${ARG_TARGET}_shaders)
 endfunction()
 
+# stage_engine_shaders_for(<exe>) — copy compiled .spv files into
+# "<exe-dir>/shaders/" after build. Pairs with platform::executableDir on the
+# loading side so each game ships as exe + adjacent shader files.
+function(stage_engine_shaders_for target)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            ${CMAKE_BINARY_DIR}/shaders
+            $<TARGET_FILE_DIR:${target}>/shaders
+        COMMENT "stage engine shaders next to ${target}"
+        VERBATIM
+    )
+endfunction()
+
 # ---- Build options --------------------------------------------------
 #
 # Sanitizers + MSVC /analyze ride on top of a normal Debug build. The
@@ -202,6 +215,24 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(spdlog)
+
+# GLM — header-only linear-algebra library. Vulkan-friendly when configured
+# with GLM_FORCE_DEPTH_ZERO_TO_ONE (matches VK's [0,1] NDC depth range, vs
+# GL's [-1,1]). Exposes a glm::glm INTERFACE target.
+set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)  # we use it header-only
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        1.0.1
+    GIT_SHALLOW    TRUE
+    SYSTEM
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(glm)
+target_compile_definitions(glm INTERFACE
+    GLM_FORCE_DEPTH_ZERO_TO_ONE     # Vulkan NDC z = [0,1], not GL's [-1,1]
+    GLM_FORCE_RADIANS               # belt-and-braces — degree variants are deprecated
+)
 
 # MSVC's STL emits a per-TU '__annotate_string' / '__annotate_vector' sentinel
 # whose value depends on whether the TU was compiled with /fsanitize=address.

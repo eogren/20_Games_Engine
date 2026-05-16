@@ -23,6 +23,9 @@ xcuserdata/
 # Credentials
 .netrc
 
+# Log files (engine log sink + per-game logs). Rotated variants (foo.1.log) too.
+*.log
+
 # Claude Code (per-user settings and local agent scratch, not shared)
 .claude/settings.local.json
 .claude/worktrees/

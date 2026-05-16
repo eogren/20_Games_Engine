@@ -15,3 +15,5 @@ endif()
 
 add_executable(Pong ${PONG_SOURCES})
 target_link_libraries(Pong PRIVATE engine platform engine_compile_options)
+
+stage_engine_shaders_for(Pong)

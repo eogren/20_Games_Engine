@@ -6,6 +6,7 @@
 add_library(platform STATIC
         src/platform.cpp
         src/win32/input_manager.cpp
+        src/win32/paths_win32.cpp
         src/win32/platform_win32.cpp
         src/win32/surface_win32.cpp
 )
