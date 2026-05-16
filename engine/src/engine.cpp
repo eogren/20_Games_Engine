@@ -88,7 +88,8 @@ namespace engine
                     accumulator -= kFixedDt;
                 }
 
-                GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r};
+                const float alpha = accumulator / kFixedDt;
+                GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r, .alpha = alpha};
                 game.update(ctx, elapsed);
                 r.endFrame();
             }

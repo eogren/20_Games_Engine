@@ -22,11 +22,16 @@ namespace engine
      *
      * Starts narrow (keyboard + renderer); audio, pointer, etc. will land
      * here as those subsystems come online. See CLAUDE.md > "Game integration".
+     *
+     * `alpha` is accumulator / fixedDt in [0, 1) — the fraction of a fixed
+     * step elapsed since the last simulation tick. Lerp between the previous
+     * and current simulation state by this factor when positioning objects.
      */
     struct GameContext
     {
         const KeyboardInput& keyboard;
         renderer::Renderer& renderer;
+        float alpha;
     };
 
     /**
