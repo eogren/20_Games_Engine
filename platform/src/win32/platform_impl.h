@@ -1,5 +1,6 @@
 #pragma once
 
+#include "input_manager.h"
 #include "platform/platform.h"
 
 #include <windows.h>
@@ -11,6 +12,7 @@ namespace platform
         HWND wnd = nullptr;
         bool running = true;
         bool minimized = false;
+        win32::InputManager inputManager;
     };
 
     // The single access point for backend TUs that need to read Platform's

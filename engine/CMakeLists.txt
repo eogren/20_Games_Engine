@@ -2,9 +2,10 @@
 # here; platform/ owns OS divergence (window, message pump, surface).
 #
 # See CLAUDE.md > "Layer split" for the direction-of-deps rule:
-# engine depends on platform (one-way). The link is PRIVATE because
-# engine.h only forward-declares platform::Platform — the include of
-# platform/surface.h sits in engine.cpp.
+# engine depends on platform (one-way). The link is PUBLIC because
+# engine's public input header (src/input/input.h) exposes
+# platform::KeyCode in its API — consumers of engine need platform's
+# include dirs to resolve it.
 
 # ---- Third-party libs (vendored under third_party/) -----------------
 #
@@ -20,9 +21,9 @@ target_link_libraries(volk PUBLIC Vulkan::Headers)
 # Enable platform-specific Vulkan declarations (vkCreateWin32SurfaceKHR etc.) in
 # both volk.c (where the function-pointer storage is allocated) and consumers
 # (where the declarations are needed). PUBLIC so the define propagates.
-if(WIN32)
+if (WIN32)
     target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_WIN32_KHR)
-endif()
+endif ()
 
 # VMA — Vulkan Memory Allocator. Header-only at use-site; one TU in
 # engine defines VMA_IMPLEMENTATION when VMA actually starts getting used.
@@ -39,15 +40,16 @@ target_include_directories(doctest SYSTEM INTERFACE third_party/doctest)
 # ---- Engine library -------------------------------------------------
 
 add_library(engine STATIC
-    src/engine.cpp
-    src/log/log.cpp
-    src/renderer/renderer.cpp
-    src/renderer/renderer_init.cpp
+        src/engine.cpp
+        src/input/input.cpp
+        src/log/log.cpp
+        src/renderer/renderer.cpp
+        src/renderer/renderer_init.cpp
 )
 target_include_directories(engine PUBLIC src)
 target_link_libraries(engine
-    PUBLIC  volk vma spdlog::spdlog
-    PRIVATE engine_compile_options platform
+        PUBLIC volk vma spdlog::spdlog platform
+        PRIVATE engine_compile_options
 )
 
 # ---- Tests ----------------------------------------------------------
@@ -56,10 +58,11 @@ target_link_libraries(engine
 # Additional test TUs in this exe just #include "doctest.h" — defining the
 # implementation macro in more than one TU breaks the link.
 add_executable(engine_tests
-    tests/smoke_test.cpp
-    tests/math_tests.cpp
-    tests/color_tests.cpp
-    tests/log_tests.cpp
+        tests/smoke_test.cpp
+        tests/math_tests.cpp
+        tests/color_tests.cpp
+        tests/input_tests.cpp
+        tests/log_tests.cpp
 )
 target_link_libraries(engine_tests PRIVATE engine doctest engine_compile_options)
 add_test(NAME engine_tests COMMAND engine_tests)
