@@ -107,6 +107,11 @@ namespace renderer
         // between a beginFrame that returned true and the matching endFrame.
         void drawQuad(float x, float y, float w, float h, engine::Color color);
 
+        [[nodiscard]] VkExtent2D viewportExtent() const noexcept
+        {
+            return extent_;
+        }
+
     private:
         Renderer(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, VkSurfaceKHR surface,
                  VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, uint32_t graphicsQueueIdx,

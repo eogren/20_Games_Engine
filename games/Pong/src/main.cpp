@@ -30,10 +30,26 @@ namespace
             }
             ctx.renderer.setClearColor(clear_);
 
-            // Placeholder paddle near the top-left so any Y-flip or
-            // origin-convention bug surfaces as a visible shift.
-            constexpr engine::Color paddle = engine::Color::rgb(1.0f, 1.0f, 1.0f);
-            ctx.renderer.drawQuad(50.0f, 100.0f, 20.0f, 120.0f, paddle);
+            constexpr engine::Color kWhite = engine::Color::rgb(1.0f, 1.0f, 1.0f);
+
+            // Placeholder paddle near the top-left.
+            ctx.renderer.drawQuad(50.0f, 100.0f, 20.0f, 120.0f, kWhite);
+
+            // Dashed center line — n dashes centered vertically so margins are equal.
+            constexpr float kDashW = 4.0f;
+            constexpr float kDashH = 20.0f;
+            constexpr float kGap = 15.0f;
+            constexpr float kPeriod = kDashH + kGap;
+            const VkExtent2D vp = ctx.renderer.viewportExtent();
+            const float vpW = static_cast<float>(vp.width);
+            const float vpH = static_cast<float>(vp.height);
+            const float cx = std::floor(vpW * 0.5f - kDashW * 0.5f);
+            const int n = static_cast<int>((vpH + kGap) / kPeriod);
+            const float startY = std::floor((vpH - (n * kPeriod - kGap)) * 0.5f);
+            for (int i = 0; i < n; ++i)
+            {
+                ctx.renderer.drawQuad(cx, startY + static_cast<float>(i) * kPeriod, kDashW, kDashH, kWhite);
+            }
         }
 
     private:
