@@ -114,6 +114,11 @@ namespace renderer
         // returned true and the matching endFrame.
         void drawQuad(float x, float y, float w, float h, engine::Color color);
 
+        // Draw a solid-color filled disc. (cx, cy) is the centre; radius is in
+        // the same coordinate space as drawQuad. May be freely interleaved with
+        // drawQuad calls in the same frame.
+        void drawDisc(float cx, float cy, float radius, engine::Color color);
+
         [[nodiscard]] VkExtent2D viewportExtent() const noexcept
         {
             return extent_;
@@ -146,6 +151,13 @@ namespace renderer
         // pipeline would need a rebuild if the format ever changed across a
         // recreate (not handled today; format is stable on typical Win32).
         std::expected<void, VkResult> buildQuadPipeline_();
+
+        // Builds the disc pipeline. Reuses quadShaderModule_ and
+        // quadPipelineLayout_; must be called after buildQuadPipeline_().
+        std::expected<void, VkResult> buildDiscPipeline_();
+
+        // Bind pipeline if not already active; set viewport+scissor dynamic state.
+        void bindPipeline_(VkPipeline pipeline);
 
         VkInstance instance_ = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT debugMessenger_ = VK_NULL_HANDLE; // VK_NULL_HANDLE in release
@@ -180,11 +192,13 @@ namespace renderer
         VkShaderModule quadShaderModule_ = VK_NULL_HANDLE;
         VkPipelineLayout quadPipelineLayout_ = VK_NULL_HANDLE;
         VkPipeline quadPipeline_ = VK_NULL_HANDLE;
+        VkPipeline discPipeline_ = VK_NULL_HANDLE;
         // Coordinate-space -> Vulkan NDC projection. beginFrame resets it to
         // pixel space; setProjectionExtent overrides it before any drawQuad.
         glm::mat4 viewProj_{1.0f};
-        // Lazy bind on first drawQuad of the frame; reset in beginFrame.
-        bool quadPipelineBoundThisFrame_ = false;
+        // Tracks which pipeline is currently bound so drawQuad/drawDisc can
+        // skip redundant vkCmdBindPipeline calls while handling interleaving.
+        VkPipeline activePipeline_ = VK_NULL_HANDLE;
         // Which MAX_FRAMES_IN_FLIGHT slot is active this frame; rotates after
         // every successful present.
         uint32_t frameIndex_ = 0;

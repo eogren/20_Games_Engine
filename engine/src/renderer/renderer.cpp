@@ -32,6 +32,7 @@ namespace renderer
         // aren't destroyed directly either; vkDestroySwapchainKHR releases
         // them. Command buffers likewise — vkDestroyCommandPool frees them
         // when the pool lands.)
+        if (discPipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, discPipeline_, nullptr);
         if (quadPipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, quadPipeline_, nullptr);
         if (quadPipelineLayout_ != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, quadPipelineLayout_, nullptr);
         if (quadShaderModule_ != VK_NULL_HANDLE) vkDestroyShaderModule(device_, quadShaderModule_, nullptr);
@@ -75,6 +76,7 @@ namespace renderer
         quadShaderModule_ = VK_NULL_HANDLE;
         quadPipelineLayout_ = VK_NULL_HANDLE;
         quadPipeline_ = VK_NULL_HANDLE;
+        discPipeline_ = VK_NULL_HANDLE;
         commandBuffers_.fill(VK_NULL_HANDLE);
         fences.fill(VK_NULL_HANDLE);
         imageAcquiredSemaphores.fill(VK_NULL_HANDLE);
@@ -90,9 +92,8 @@ namespace renderer
           imageAcquiredSemaphores(other.imageAcquiredSemaphores),
           renderCompleteSemaphores(std::move(other.renderCompleteSemaphores)), clearColor_(other.clearColor_),
           quadShaderModule_(other.quadShaderModule_), quadPipelineLayout_(other.quadPipelineLayout_),
-          quadPipeline_(other.quadPipeline_), viewProj_(other.viewProj_),
-          quadPipelineBoundThisFrame_(other.quadPipelineBoundThisFrame_), frameIndex_(other.frameIndex_),
-          imageIndex_(other.imageIndex_)
+          quadPipeline_(other.quadPipeline_), discPipeline_(other.discPipeline_), viewProj_(other.viewProj_),
+          activePipeline_(other.activePipeline_), frameIndex_(other.frameIndex_), imageIndex_(other.imageIndex_)
     {
         other.instance_ = VK_NULL_HANDLE;
         other.debugMessenger_ = VK_NULL_HANDLE;
@@ -105,6 +106,7 @@ namespace renderer
         other.quadShaderModule_ = VK_NULL_HANDLE;
         other.quadPipelineLayout_ = VK_NULL_HANDLE;
         other.quadPipeline_ = VK_NULL_HANDLE;
+        other.discPipeline_ = VK_NULL_HANDLE;
         other.commandBuffers_.fill(VK_NULL_HANDLE);
         other.fences.fill(VK_NULL_HANDLE);
         other.imageAcquiredSemaphores.fill(VK_NULL_HANDLE);
@@ -137,8 +139,9 @@ namespace renderer
             quadShaderModule_ = other.quadShaderModule_;
             quadPipelineLayout_ = other.quadPipelineLayout_;
             quadPipeline_ = other.quadPipeline_;
+            discPipeline_ = other.discPipeline_;
             viewProj_ = other.viewProj_;
-            quadPipelineBoundThisFrame_ = other.quadPipelineBoundThisFrame_;
+            activePipeline_ = other.activePipeline_;
             frameIndex_ = other.frameIndex_;
             imageIndex_ = other.imageIndex_;
             other.instance_ = VK_NULL_HANDLE;
@@ -152,6 +155,7 @@ namespace renderer
             other.quadShaderModule_ = VK_NULL_HANDLE;
             other.quadPipelineLayout_ = VK_NULL_HANDLE;
             other.quadPipeline_ = VK_NULL_HANDLE;
+            other.discPipeline_ = VK_NULL_HANDLE;
             other.commandBuffers_.fill(VK_NULL_HANDLE);
             other.fences.fill(VK_NULL_HANDLE);
             other.imageAcquiredSemaphores.fill(VK_NULL_HANDLE);
@@ -184,7 +188,7 @@ namespace renderer
         // pixel (w, h) -> NDC (1, 1) (bottom-right).
         viewProj_ = glm::orthoRH_ZO(0.0f, static_cast<float>(extent_.width), 0.0f, static_cast<float>(extent_.height),
                                     0.0f, 1.0f);
-        quadPipelineBoundThisFrame_ = false;
+        activePipeline_ = VK_NULL_HANDLE;
 
         // Wait for the previous submit using this slot's resources to retire.
         // The fence was created SIGNALED in createFrameSync, so frame 0
@@ -273,41 +277,54 @@ namespace renderer
         return true;
     }
 
+    void Renderer::bindPipeline_(VkPipeline pipeline)
+    {
+        if (activePipeline_ == pipeline) return;
+        const VkCommandBuffer cb = commandBuffers_[frameIndex_];
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        // Viewport and scissor are dynamic state — set them on every pipeline
+        // switch so each pipeline's first draw sees valid values.
+        const VkViewport viewport{
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(extent_.width),
+            .height = static_cast<float>(extent_.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cb, 0, 1, &viewport);
+        const VkRect2D scissor{{0, 0}, extent_};
+        vkCmdSetScissor(cb, 0, 1, &scissor);
+        activePipeline_ = pipeline;
+    }
+
     void Renderer::drawQuad(float x, float y, float w, float h, engine::Color color)
     {
         const VkCommandBuffer cb = commandBuffers_[frameIndex_];
-
-        if (!quadPipelineBoundThisFrame_)
-        {
-            // Viewport+scissor are dynamic state on this pipeline — the
-            // pipeline declares them, the actual rects come from here. Y=0 at
-            // the top per the convention baked into viewProj_; no
-            // MAINTENANCE1 viewport flip.
-            vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, quadPipeline_);
-            const VkViewport viewport{
-                .x = 0.0f,
-                .y = 0.0f,
-                .width = static_cast<float>(extent_.width),
-                .height = static_cast<float>(extent_.height),
-                .minDepth = 0.0f,
-                .maxDepth = 1.0f,
-            };
-            vkCmdSetViewport(cb, 0, 1, &viewport);
-            const VkRect2D scissor{{0, 0}, extent_};
-            vkCmdSetScissor(cb, 0, 1, &scissor);
-            quadPipelineBoundThisFrame_ = true;
-        }
-
+        bindPipeline_(quadPipeline_);
         const auto rgba = color.floats();
         const QuadPushConstants pc{
             .viewProj = viewProj_,
             .rect = {x, y, w, h},
             .color = {rgba[0], rgba[1], rgba[2], rgba[3]},
         };
-        // Stage mask must be a subset of the layout's push-constant range.
         vkCmdPushConstants(cb, quadPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                            sizeof(QuadPushConstants), &pc);
-        // Six vertices, expanded from SV_VertexID — no vertex buffer bind.
+        vkCmdDraw(cb, 6, 1, 0, 0);
+    }
+
+    void Renderer::drawDisc(float cx, float cy, float radius, engine::Color color)
+    {
+        const VkCommandBuffer cb = commandBuffers_[frameIndex_];
+        bindPipeline_(discPipeline_);
+        const auto rgba = color.floats();
+        const QuadPushConstants pc{
+            .viewProj = viewProj_,
+            .rect = {cx - radius, cy - radius, radius * 2.0f, radius * 2.0f},
+            .color = {rgba[0], rgba[1], rgba[2], rgba[3]},
+        };
+        vkCmdPushConstants(cb, quadPipelineLayout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                           sizeof(QuadPushConstants), &pc);
         vkCmdDraw(cb, 6, 1, 0, 0);
     }
 
