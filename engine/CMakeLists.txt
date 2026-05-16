@@ -52,6 +52,11 @@ target_link_libraries(engine
         PRIVATE engine_compile_options
 )
 
+add_slang_shaders(
+        TARGET engine
+        SOURCES shaders/quad.slang
+)
+
 # ---- Tests ----------------------------------------------------------
 
 # smoke_test.cpp defines doctest's main (DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN).

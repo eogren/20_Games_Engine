@@ -26,6 +26,54 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 # Vulkan::Vulkan (the loader stub library).
 find_package(Vulkan 1.3 REQUIRED)
 
+# slangc — Slang → SPIR-V compiler, ships in the Vulkan SDK since 1.3.296.
+# Hinted by $VULKAN_SDK so a fresh shell that exported the SDK var (as
+# build.ps1 expects) picks it up without further configuration.
+find_program(SLANGC_EXECUTABLE
+    NAMES slangc
+    HINTS ENV VULKAN_SDK
+    PATH_SUFFIXES Bin bin
+    REQUIRED
+)
+
+# add_slang_shaders(TARGET <tgt> SOURCES <a.slang> [<b.slang> ...])
+#
+# Each .slang file may carry multiple [shader("...")]-tagged entry points
+# (vertex + fragment + compute); slangc bakes them into one SPIR-V module
+# and pipeline creation picks the entry point by name at runtime.
+function(add_slang_shaders)
+    cmake_parse_arguments(ARG "" "TARGET" "SOURCES" ${ARGN})
+
+    if(NOT TARGET ${ARG_TARGET})
+        message(FATAL_ERROR "add_slang_shaders: TARGET '${ARG_TARGET}' is not a known target")
+    endif()
+    if(NOT ARG_SOURCES)
+        message(FATAL_ERROR "add_slang_shaders: SOURCES is required")
+    endif()
+
+    set(_outputs)
+    foreach(src ${ARG_SOURCES})
+        get_filename_component(_src_abs "${src}" ABSOLUTE)
+        get_filename_component(_basename "${src}" NAME_WE)
+        set(_out "${CMAKE_BINARY_DIR}/shaders/${_basename}.spv")
+        add_custom_command(
+            OUTPUT "${_out}"
+            COMMAND ${SLANGC_EXECUTABLE}
+                "${_src_abs}"
+                -target spirv
+                -profile sm_6_5
+                -o "${_out}"
+            DEPENDS "${_src_abs}"
+            COMMENT "slangc ${src} -> shaders/${_basename}.spv"
+            VERBATIM
+        )
+        list(APPEND _outputs "${_out}")
+    endforeach()
+
+    add_custom_target(${ARG_TARGET}_shaders DEPENDS ${_outputs})
+    add_dependencies(${ARG_TARGET} ${ARG_TARGET}_shaders)
+endfunction()
+
 # ---- Build options --------------------------------------------------
 #
 # Sanitizers + MSVC /analyze ride on top of a normal Debug build. The
