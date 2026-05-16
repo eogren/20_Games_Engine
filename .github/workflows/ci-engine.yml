@@ -27,7 +27,7 @@ on:
       - 'format.ps1'
       - 'lint.ps1'
       - '.gitattributes'
-      - '.github/workflows/ci-engine.yml'
+      - '.github/workflows/**'
   # Nightly + manual triggers for the extended-checks job (ASan, UBSan,
   # MSVC /analyze). Those checks aren't gating per-PR — see the job's
   # `if:` guard below.
