@@ -173,6 +173,11 @@ namespace renderer
         clearColor_.float32[3] = rgba[3];
     }
 
+    void Renderer::setProjectionExtent(float w, float h) noexcept
+    {
+        viewProj_ = glm::orthoRH_ZO(0.0f, w, 0.0f, h, 0.0f, 1.0f);
+    }
+
     bool Renderer::beginFrame()
     {
         // pixel (0, 0) -> NDC (-1, -1) (top-left in Vulkan's Y-down NDC);
