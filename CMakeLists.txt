@@ -136,12 +136,31 @@ if(MSVC)
         # build failures (e.g. spdlog/fmt's bundled base.h trips C6239
         # under /analyze).
         /external:W0
-        # Conformance — the MSVC defaults predate C++17.
+        # Conformance flags supported by both cl.exe and clang-cl.
         /permissive-       # strict standard name lookup, two-phase template lookup, etc.
-        /Zc:preprocessor   # conforming preprocessor (legacy MSVC one mangles __VA_ARGS__)
-        /Zc:__cplusplus    # __cplusplus reflects the actual standard, not 199711L
         /utf-8             # source + execution charset; dodges smart-quote-in-literal traps
     )
+
+    # CMAKE_CXX_COMPILER_ID is "MSVC" for cl.exe and "Clang" for clang-cl.
+    # /Zc:preprocessor and /Zc:__cplusplus are cl.exe-only conformance flags;
+    # clang-cl already defaults to the conforming preprocessor and always
+    # reports the correct __cplusplus — passing these produces a fatal
+    # -Wunused-command-line-argument under /WX.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        target_compile_options(engine_compile_options INTERFACE
+            /Zc:preprocessor
+            /Zc:__cplusplus
+        )
+    endif()
+
+    # clang-cl warns on partial designated initializers: initializing .sType
+    # but omitting .pNext / .flags on Vulkan structs. Zero-init of unspecified
+    # fields is the intended Vulkan pattern; MSVC doesn't warn here.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        target_compile_options(engine_compile_options INTERFACE
+            -Wno-missing-designated-field-initializers
+        )
+    endif()
 
     if(ENGINE_ENABLE_ASAN)
         target_compile_options(engine_compile_options INTERFACE
