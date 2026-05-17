@@ -6,6 +6,7 @@
 
 #include "renderer/renderer.h"
 
+#include "profiling.h"
 #include "renderer/quad_push_constants.h"
 
 #include <cstdint>
@@ -60,6 +61,13 @@ namespace renderer
         }
         // Pool destruction frees its allocated command buffers; no separate
         // vkFreeCommandBuffers needed.
+#ifdef ENGINE_TRACY_ENABLED
+        if (tracyVkCtx_)
+        {
+            TracyVkDestroy(tracyVkCtx_);
+            tracyVkCtx_ = nullptr;
+        }
+#endif
         if (commandPool_ != VK_NULL_HANDLE) vkDestroyCommandPool(device_, commandPool_, nullptr);
         if (device_ != VK_NULL_HANDLE) vkDestroyDevice(device_, nullptr);
         if (surface_ != VK_NULL_HANDLE) vkDestroySurfaceKHR(instance_, surface_, nullptr);
@@ -94,6 +102,10 @@ namespace renderer
           quadShaderModule_(other.quadShaderModule_), quadPipelineLayout_(other.quadPipelineLayout_),
           quadPipeline_(other.quadPipeline_), discPipeline_(other.discPipeline_), viewProj_(other.viewProj_),
           activePipeline_(other.activePipeline_), frameIndex_(other.frameIndex_), imageIndex_(other.imageIndex_)
+#ifdef ENGINE_TRACY_ENABLED
+          ,
+          tracyVkCtx_(other.tracyVkCtx_)
+#endif
     {
         other.instance_ = VK_NULL_HANDLE;
         other.debugMessenger_ = VK_NULL_HANDLE;
@@ -111,6 +123,9 @@ namespace renderer
         other.fences.fill(VK_NULL_HANDLE);
         other.imageAcquiredSemaphores.fill(VK_NULL_HANDLE);
         // swapchainImages_ / swapchainImageViews_ / renderCompleteSemaphores: vector move leaves source empty.
+#ifdef ENGINE_TRACY_ENABLED
+        other.tracyVkCtx_ = nullptr;
+#endif
     }
 
     Renderer& Renderer::operator=(Renderer&& other) noexcept
@@ -144,6 +159,10 @@ namespace renderer
             activePipeline_ = other.activePipeline_;
             frameIndex_ = other.frameIndex_;
             imageIndex_ = other.imageIndex_;
+#ifdef ENGINE_TRACY_ENABLED
+            tracyVkCtx_ = other.tracyVkCtx_;
+            other.tracyVkCtx_ = nullptr;
+#endif
             other.instance_ = VK_NULL_HANDLE;
             other.debugMessenger_ = VK_NULL_HANDLE;
             other.surface_ = VK_NULL_HANDLE;
@@ -184,6 +203,7 @@ namespace renderer
 
     bool Renderer::beginFrame()
     {
+        ZoneScoped;
         // pixel (0, 0) -> NDC (-1, -1) (top-left in Vulkan's Y-down NDC);
         // pixel (w, h) -> NDC (1, 1) (bottom-right).
         viewProj_ = glm::orthoRH_ZO(0.0f, static_cast<float>(extent_.width), 0.0f, static_cast<float>(extent_.height),
@@ -226,6 +246,9 @@ namespace renderer
             .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
         };
         VK_CHECK(vkBeginCommandBuffer(cb, &bi));
+#ifdef ENGINE_TRACY_ENABLED
+        TracyVkCollect(tracyVkCtx_, cb);
+#endif
 
         // UNDEFINED -> COLOR_ATTACHMENT_OPTIMAL. UNDEFINED on the old layout is
         // fine because LOAD_OP_CLEAR discards prior contents — we don't need to
@@ -301,6 +324,9 @@ namespace renderer
     void Renderer::drawQuad(float x, float y, float w, float h, engine::Color color)
     {
         const VkCommandBuffer cb = commandBuffers_[frameIndex_];
+#ifdef ENGINE_TRACY_ENABLED
+        TracyVkZone(tracyVkCtx_, cb, "drawQuad");
+#endif
         bindPipeline_(quadPipeline_);
         const auto rgba = color.floats();
         const QuadPushConstants pc{
@@ -316,6 +342,9 @@ namespace renderer
     void Renderer::drawDisc(float cx, float cy, float radius, engine::Color color)
     {
         const VkCommandBuffer cb = commandBuffers_[frameIndex_];
+#ifdef ENGINE_TRACY_ENABLED
+        TracyVkZone(tracyVkCtx_, cb, "drawDisc");
+#endif
         bindPipeline_(discPipeline_);
         const auto rgba = color.floats();
         const QuadPushConstants pc{
@@ -330,6 +359,7 @@ namespace renderer
 
     void Renderer::endFrame()
     {
+        ZoneScoped;
         const VkCommandBuffer cb = commandBuffers_[frameIndex_];
 
         vkCmdEndRendering(cb);

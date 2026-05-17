@@ -14,6 +14,10 @@
 
 #include "renderer/quad_push_constants.h"
 
+#ifdef ENGINE_TRACY_ENABLED
+#include <tracy/TracyVulkan.hpp>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -567,6 +571,38 @@ namespace renderer
         if (!cmd) return std::unexpected(cmd.error());
         renderer.commandPool_ = cmd->pool;
         renderer.commandBuffers_ = cmd->buffers;
+#ifdef ENGINE_TRACY_ENABLED
+        {
+            // TracyVkContext needs a command buffer submission to reset its
+            // query pool; use a one-shot buffer from the same pool.
+            VkCommandBuffer initCb = VK_NULL_HANDLE;
+            const VkCommandBufferAllocateInfo ai{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .commandPool = renderer.commandPool_,
+                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = 1,
+            };
+            if (vkAllocateCommandBuffers(*logicalDevice, &ai, &initCb) == VK_SUCCESS)
+            {
+                const VkCommandBufferBeginInfo bi{
+                    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+                };
+                vkBeginCommandBuffer(initCb, &bi);
+                renderer.tracyVkCtx_ =
+                    TracyVkContext(physicalDevice->device, *logicalDevice, graphicsQueue, initCb);
+                vkEndCommandBuffer(initCb);
+                const VkSubmitInfo si{
+                    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                    .commandBufferCount = 1,
+                    .pCommandBuffers = &initCb,
+                };
+                vkQueueSubmit(graphicsQueue, 1, &si, VK_NULL_HANDLE);
+                vkQueueWaitIdle(graphicsQueue);
+                vkFreeCommandBuffers(*logicalDevice, renderer.commandPool_, 1, &initCb);
+            }
+        }
+#endif
         if (auto r = renderer.recreateSwapchain_(extent); !r) return std::unexpected(r.error());
         // Pipeline bakes the swapchain color format into VkPipelineRenderingCreateInfo,
         // so it has to be built after the first swapchain exists.

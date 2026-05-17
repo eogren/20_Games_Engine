@@ -51,6 +51,10 @@ target_link_libraries(engine
         PUBLIC volk vma spdlog::spdlog glm::glm platform
         PRIVATE engine_compile_options
 )
+if(ENGINE_ENABLE_TRACY)
+    target_link_libraries(engine PUBLIC TracyClient)
+    target_compile_definitions(engine PUBLIC ENGINE_TRACY_ENABLED)
+endif()
 
 add_slang_shaders(
         TARGET engine

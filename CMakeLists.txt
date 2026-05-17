@@ -234,6 +234,24 @@ target_compile_definitions(glm INTERFACE
     GLM_FORCE_RADIANS               # belt-and-braces — degree variants are deprecated
 )
 
+# Tracy profiler (disabled by default; enable with ENGINE_ENABLE_TRACY=ON or
+# the `tracy` preset). TRACY_ON_DEMAND lets the app run at full speed when the
+# Tracy server is not connected — no overhead until you open the profiler.
+option(ENGINE_ENABLE_TRACY "Enable Tracy frame profiler instrumentation." OFF)
+if(ENGINE_ENABLE_TRACY)
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        tracy
+        GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+        GIT_TAG        v0.11.1
+        GIT_SHALLOW    TRUE
+        SYSTEM
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(tracy)
+endif()
+
 # MSVC's STL emits a per-TU '__annotate_string' / '__annotate_vector' sentinel
 # whose value depends on whether the TU was compiled with /fsanitize=address.
 # Mixing ASan and non-ASan TUs that touch std::string/std::vector in the same
