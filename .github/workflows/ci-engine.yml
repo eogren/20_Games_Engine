@@ -67,8 +67,10 @@ jobs:
 
       # Sets INCLUDE / LIB / PATH for MSVC so Ninja can drive cl.exe.
       # Without this, find_package fails to locate the Windows SDK.
+      # step-security/* is a Node-24 fork of ilammy/msvc-dev-cmd, which
+      # has been unmaintained since early 2024 and still runs on Node 20.
       - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: step-security/msvc-dev-cmd@v1
         with:
           arch: x64
 
@@ -82,7 +84,7 @@ jobs:
       # yet. Revisit if CI starts running Vulkan code.
       - name: Cache Vulkan SDK
         id: cache-vulkan
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
           key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
@@ -175,13 +177,13 @@ jobs:
       # against the LLVM toolchain, but the compile commands it consumes
       # reference cl.exe and the MSVC headers.
       - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: step-security/msvc-dev-cmd@v1
         with:
           arch: x64
 
       - name: Cache Vulkan SDK
         id: cache-vulkan
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
           key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
@@ -217,7 +219,7 @@ jobs:
       # binaries on PATH overwrite the bundled ones either way.
       - name: Cache LLVM
         id: cache-llvm
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\Program Files\LLVM
           key: llvm-windows-${{ env.LLVM_VERSION }}
@@ -292,13 +294,13 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: step-security/msvc-dev-cmd@v1
         with:
           arch: x64
 
       - name: Cache Vulkan SDK
         id: cache-vulkan
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
           key: vulkan-sdk-windows-${{ env.VULKAN_VERSION }}
