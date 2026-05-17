@@ -3,6 +3,10 @@
 #include "math/color.h"
 #include "volk.h"
 
+#ifdef ENGINE_TRACY_ENABLED
+#include <tracy/TracyVulkan.hpp>
+#endif
+
 #include <glm/mat4x4.hpp>
 
 #include <array>
@@ -205,5 +209,8 @@ namespace renderer
         // Swapchain image picked by the current beginFrame; only meaningful
         // between beginFrame and endFrame.
         uint32_t imageIndex_ = 0;
+#ifdef ENGINE_TRACY_ENABLED
+        TracyVkCtx tracyVkCtx_ = nullptr;
+#endif
     };
 } // namespace renderer

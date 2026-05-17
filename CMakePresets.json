@@ -68,6 +68,17 @@
                 "CMAKE_BUILD_TYPE": "Debug",
                 "ENGINE_ENABLE_MSVC_ANALYZE": "ON"
             }
+        },
+
+        {
+            "name": "tracy",
+            "displayName": "RelWithDebInfo + Tracy profiler (MSVC, Ninja)",
+            "description": "Optimized build with Tracy frame profiler. Run alongside the Tracy server to capture CPU/GPU timings.",
+            "inherits": "_base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "ENGINE_ENABLE_TRACY": "ON"
+            }
         }
     ],
 
@@ -77,7 +88,8 @@
         { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo" },
         { "name": "asan",           "configurePreset": "asan" },
         { "name": "ubsan",          "configurePreset": "ubsan" },
-        { "name": "analyze",        "configurePreset": "analyze" }
+        { "name": "analyze",        "configurePreset": "analyze" },
+        { "name": "tracy",          "configurePreset": "tracy" }
     ],
 
     "testPresets": [
@@ -86,6 +98,7 @@
         { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo", "output": { "outputOnFailure": true } },
         { "name": "asan",           "configurePreset": "asan",           "output": { "outputOnFailure": true } },
         { "name": "ubsan",          "configurePreset": "ubsan",          "output": { "outputOnFailure": true } },
-        { "name": "analyze",        "configurePreset": "analyze",        "output": { "outputOnFailure": true } }
+        { "name": "analyze",        "configurePreset": "analyze",        "output": { "outputOnFailure": true } },
+        { "name": "tracy",          "configurePreset": "tracy",          "output": { "outputOnFailure": true } }
     ]
 }

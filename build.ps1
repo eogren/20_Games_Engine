@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('debug','release','relwithdebinfo','asan','ubsan','analyze')]
+    [ValidateSet('debug','release','relwithdebinfo','asan','ubsan','analyze','tracy')]
     [string]$Preset = 'debug',
 
     [ValidateSet('configure','build','test','all')]

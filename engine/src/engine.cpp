@@ -2,6 +2,7 @@
 
 #include "platform/platform.h"
 #include "platform/surface.h"
+#include "profiling.h"
 
 #include <chrono>
 
@@ -83,16 +84,21 @@ namespace engine
 
                 while (accumulator >= kFixedDt)
                 {
+                    ZoneScopedN("fixedUpdate");
                     FixedUpdateContext fctx{.keyboard = input_state_.keyboard};
                     game.fixedUpdate(fctx, kFixedDt);
                     accumulator -= kFixedDt;
                 }
 
                 const float alpha = accumulator / kFixedDt;
-                GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r, .alpha = alpha};
-                game.update(ctx, elapsed);
+                {
+                    ZoneScopedN("update");
+                    GameContext ctx{.keyboard = input_state_.keyboard, .renderer = r, .alpha = alpha};
+                    game.update(ctx, elapsed);
+                }
                 r.endFrame();
             }
+            FrameMark;
         }
     }
 
