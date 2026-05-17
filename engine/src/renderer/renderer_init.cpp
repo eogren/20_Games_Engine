@@ -63,6 +63,7 @@ namespace
         return exts;
     }
 
+#ifndef NDEBUG
     VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                                                        VkDebugUtilsMessageTypeFlagsEXT types,
                                                        const VkDebugUtilsMessengerCallbackDataEXT* data,
@@ -101,6 +102,7 @@ namespace
         // fuzz harnesses that want to abort the offending call.
         return VK_FALSE;
     }
+#endif
 
     enum class DeviceSelectError : std::uint8_t
     {
@@ -375,11 +377,13 @@ namespace
         return semaphores;
     }
 
+#ifndef NDEBUG
     bool hasLayer(const std::vector<VkLayerProperties>& layers, std::string_view name)
     {
         return std::ranges::any_of(layers, [name](const VkLayerProperties& l)
                                    { return std::string_view(l.layerName) == name; });
     }
+#endif
 
     bool hasExtension(const std::vector<VkExtensionProperties>& exts, std::string_view name)
     {

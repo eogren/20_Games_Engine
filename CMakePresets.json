@@ -48,14 +48,15 @@
 
         {
             "name": "ubsan",
-            "displayName": "Debug + UndefinedBehaviorSanitizer (clang-cl, Ninja)",
-            "description": "clang-cl + -fsanitize=undefined. MSVC doesn't ship UBSan, so this preset switches the toolchain to clang-cl (ships with VS 2022).",
+            "displayName": "RelWithDebInfo + UndefinedBehaviorSanitizer (clang-cl, Ninja)",
+            "description": "clang-cl + -fsanitize=undefined. MSVC doesn't ship UBSan, so this preset switches the toolchain to clang-cl (ships with VS 2022). RelWithDebInfo + static CRT (/MT) because LLVM's clang_rt.ubsan_standalone_cxx is built against the release STL with the static CRT — linking it into /MDd or /MD fails with /failifmismatch on _ITERATOR_DEBUG_LEVEL or RuntimeLibrary. RelWithDebInfo also exercises optimizer-induced UB that Debug hides.",
             "inherits": "_base",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
                 "ENGINE_ENABLE_UBSAN": "ON",
                 "CMAKE_C_COMPILER": "clang-cl",
-                "CMAKE_CXX_COMPILER": "clang-cl"
+                "CMAKE_CXX_COMPILER": "clang-cl",
+                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded"
             }
         },
 
