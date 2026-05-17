@@ -589,8 +589,7 @@ namespace renderer
                     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                 };
                 vkBeginCommandBuffer(initCb, &bi);
-                renderer.tracyVkCtx_ =
-                    TracyVkContext(physicalDevice->device, *logicalDevice, graphicsQueue, initCb);
+                renderer.tracyVkCtx_ = TracyVkContext(physicalDevice->device, *logicalDevice, graphicsQueue, initCb);
                 vkEndCommandBuffer(initCb);
                 const VkSubmitInfo si{
                     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
